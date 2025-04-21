@@ -1,6 +1,0 @@
-- Wedgets: row and column.
-- State Management: Stateful and Stateless.
-- Dart: the language of Flutter.
-- Navigator: A stack of pages.
-- Integrating APIs: Check a video.
-- For clean code: main.dart and a folder called screens. The main should contain a map of all the screens.
