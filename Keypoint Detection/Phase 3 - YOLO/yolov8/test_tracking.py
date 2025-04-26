@@ -154,7 +154,7 @@ def draw_annotations(frame, rescuer, patient):
 		except Exception as e:
 			print(f"Error drawing patient: {str(e)}")
 	
-	# Add temporary boxes for new tracks
+	#!------------------------------ Add temporary boxes for new tracks
 	if patient is None:
 		for tid, data in tracked_persons.items():
 			if data["age"] <= 1 and data["last_bbox"].size > 0:
@@ -219,7 +219,6 @@ def main():
 			if key == ord('q'):
 				print("User terminated execution with Q key")
 				break
-			
 			
 			# Check for window closure
 			if cv2.getWindowProperty('CPR Monitoring', cv2.WND_PROP_VISIBLE) < 1:
