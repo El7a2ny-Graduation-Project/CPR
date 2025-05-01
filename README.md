@@ -6,3 +6,4 @@ All notes for GP2 can be found [here](https://thrilling-replace-8f2.notion.site/
 
 ## Tracking Script
 - Unfortunately, DeepSORT does not have comprehensive official documentation for its codebase. Its behavior is inferred from the code and community usage patterns. You can find the original repository [here](https://github.com/levan92/deep_sort_realtime).
+- Introduction to DeepSORT can be found [here](https://youtu.be/LbyqsoLJu5Q?feature=shared).

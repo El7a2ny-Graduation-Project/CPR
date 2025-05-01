@@ -1,0 +1,18 @@
+Run the following commands:
+
+# Will not need that anymore
+git clone https://github.com/mikel-brostrom/boxmot.git
+
+cd boxmot
+
+pip install poetry
+
+poetry install
+
+poetry add git+https://github.com/mikel-brostrom/ultralytics.git
+
+# Tracking\BoxMOT\boxmot\tracking\track.py make sure that this file contains the IP provided by the IP webcam application, this should be handled statically in flutter
+poetry run python tracking/track.py --yolo-model yolo11n-pose.pt --reid-model osnet_x0_25_msmt17.pt --show --conf 0.5
+
+# exp, exp1, exp2, ... are the folders created by the tracking script
+ffmpeg -i runs/track/exp/video_4.avi -vf fps=30 -vcodec libx264 output.mp4
