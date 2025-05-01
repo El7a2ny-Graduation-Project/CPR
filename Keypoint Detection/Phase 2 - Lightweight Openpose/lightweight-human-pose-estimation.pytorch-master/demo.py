@@ -1,5 +1,4 @@
 import argparse
-
 import cv2
 import numpy as np
 import torch
@@ -89,6 +88,8 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
     num_keypoints = Pose.num_kpts
     previous_poses = []
     delay = 1
+    video_writer = None
+
     for img in image_provider:
         orig_img = img.copy()
         heatmaps, pafs, scale, pad = infer_fast(net, img, height_size, stride, upsample_ratio, cpu)
@@ -126,15 +127,25 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
             if track:
                 cv2.putText(img, 'id: {}'.format(pose.id), (pose.bbox[0], pose.bbox[1] - 16),
                             cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255))
-        cv2.imshow('Lightweight Human Pose Estimation Python Demo', img)
+
+        # cv2.imshow('Lightweight Human Pose Estimation Python Demo', img)
+
+        # Save video output
+        if video_writer is None:
+            height, width, _ = img.shape
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # or use 'XVID'
+            video_writer = cv2.VideoWriter('output.mp4', fourcc, 15.0, (width, height))
+
+        video_writer.write(img)
+
         key = cv2.waitKey(delay)
         if key == 27:  # esc
-            return
+            break
         elif key == 112:  # 'p'
-            if delay == 1:
-                delay = 0
-            else:
-                delay = 1
+            delay = 0 if delay == 1 else 1
+
+    if video_writer is not None:
+        video_writer.release()
 
 
 if __name__ == '__main__':
