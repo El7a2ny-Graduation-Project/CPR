@@ -1,5 +1,9 @@
 Dataset/
 myenv/
+*.mp4
+*.avi
+runs/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
