@@ -39,6 +39,7 @@ def on_predict_start(predictor, persist=False):
     tracking_config = TRACKER_CONFIGS / (predictor.custom_args.tracking_method + '.yaml')
     trackers = []
     for i in range(predictor.dataset.bs):
+        # TEMA 01
         tracker = create_tracker(
             predictor.custom_args.tracking_method,
             tracking_config,
@@ -57,7 +58,6 @@ def on_predict_start(predictor, persist=False):
 
 @torch.no_grad()
 def run(args):
-
     if args.imgsz is None:
         args.imgsz = default_imgsz(args.yolo_model)
     yolo = YOLO(
@@ -112,16 +112,18 @@ def run(args):
     # store custom args in predictor
     yolo.predictor.custom_args = args
 
+    temp = 0
     for r in results:
 
-        img = yolo.predictor.trackers[0].plot_results(r.orig_img, args.show_trajectories)
+        img = yolo.predictor.trackers[0].plot_results(r.orig_img, r.keypoints , args.show_trajectories)
+        # print(r.keypoints)
 
         if args.show is True:
             cv2.imshow('BoxMOT', img)     
             key = cv2.waitKey(1) & 0xFF
             if key == ord(' ') or key == ord('q'):
                 break
-
+    
 
 def parse_opt():
     
@@ -140,7 +142,7 @@ def parse_opt():
                         help='inference size h,w')
     parser.add_argument('--conf', type=float, default=0.5,
                         help='confidence threshold')
-    parser.add_argument('--iou', type=float, default=0.7,
+    parser.add_argument('--iou', type=float, default=0.3,
                         help='intersection over union (IoU) threshold for NMS')
     parser.add_argument('--device', default='',
                         help='cuda device, i.e. 0 or 0,1,2,3 or cpu')

@@ -331,43 +331,153 @@ class BaseTracker(ABC):
                 )
         return img
 
-
-    def plot_results(self, img: np.ndarray, show_trajectories: bool, thickness: int = 2, fontscale: float = 0.5) -> np.ndarray:
+    def plot_results(self, img: np.ndarray, keypoints, show_trajectories: bool, 
+                thickness: int = 2, fontscale: float = 0.5) -> np.ndarray:
         """
-        Visualizes the trajectories of all active tracks on the image. For each track,
-        it draws the latest bounding box and the path of movement if the history of
-        observations is longer than two. This helps in understanding the movement patterns
-        of each tracked object.
-
+        Visualizes tracks, trajectories, and pose keypoints with connections.
+        
         Parameters:
-        - img (np.ndarray): The image array on which to draw the trajectories and bounding boxes.
-        - show_trajectories (bool): Whether to show the trajectories.
-        - thickness (int): The thickness of the bounding box.
-        - fontscale (float): The font scale for the text.
-
+        - img: Input image (numpy array)
+        - keypoints: Ultralytics Keypoints object from results
+        - show_trajectories: Whether to show movement trajectories
+        - thickness: Line thickness for drawings
+        - fontscale: Text size
+        
         Returns:
-        - np.ndarray: The image array with trajectories and bounding boxes of all active tracks.
+        - Image with visualizations (numpy array)
         """
 
-        # if values in dict
+
+        # print the shape of the keypoints
+        print("keypoints shape", keypoints.shape)
+
+        # Get image dimensions
+        height, width = img.shape[:2]
+        
+        # COCO keypoint connections (1-based indices)
+        SKELETON = [
+            [16, 14], [14, 12], [17, 15], [15, 13], [12, 13], [6, 12], [7, 13], 
+            [6, 7], [6, 8], [7, 9], [8, 10], [9, 11], [2, 3], [1, 2], [1, 3], 
+            [2, 4], [3, 5], [4, 6], [5, 7]]
+        
+        # Plot keypoints and connections if available
+        if keypoints is not None:
+            # Convert Keypoints object to numpy array [num_people, 17, 2/3]
+            kpts_data = keypoints.data.cpu().numpy() if hasattr(keypoints, 'data') else None
+            
+            if kpts_data is not None:
+                for person_kpts in kpts_data:  # For each detected person
+                    # Get confidence if available (shape may be [17,2] or [17,3])
+                    has_conf = person_kpts.shape[-1] == 3
+                    
+                    # Draw keypoints
+                    for i, kp in enumerate(person_kpts):
+                        x, y = kp[:2]
+                        conf = kp[2] if has_conf else 1.0
+                        
+                        if conf > 0.5:  # Confidence threshold
+                            pt = (int(x * width), int(y * height))
+                            cv.circle(img, pt, thickness+2, (0, 255, 0), -1)
+                    
+                    # Draw connections
+                    for i, j in SKELETON:
+                        if (i-1 < len(person_kpts) and j-1 < len(person_kpts)):
+                            kp1 = person_kpts[i-1]
+                            kp2 = person_kpts[j-1]
+                            
+                            # Check confidence if available
+                            kp1_visible = (kp1[2] > 0.5) if has_conf else True
+                            kp2_visible = (kp2[2] > 0.5) if has_conf else True
+                            
+                            if kp1_visible and kp2_visible:
+                                pt1 = (int(kp1[0] * width), int(kp1[1] * height))
+                                pt2 = (int(kp2[0] * width), int(kp2[1] * height))
+                                cv.line(img, pt1, pt2, (255, 0, 0), thickness)
+
+        # Original tracking visualization (unchanged)
         if self.per_class_active_tracks is not None:
             for k in self.per_class_active_tracks.keys():
                 active_tracks = self.per_class_active_tracks[k]
                 for a in active_tracks:
-                    if a.history_observations:
-                        if len(a.history_observations) > 2:
-                            box = a.history_observations[-1]
-                            img = self.plot_box_on_img(img, box, a.conf, a.cls, a.id, thickness, fontscale)
-                            if show_trajectories:
-                                img = self.plot_trackers_trajectories(img, a.history_observations, a.id)
-        else:
-            for a in self.active_tracks:
-                if a.history_observations:
-                    if len(a.history_observations) > 2:
+                    if a.history_observations and len(a.history_observations) > 2:
                         box = a.history_observations[-1]
                         img = self.plot_box_on_img(img, box, a.conf, a.cls, a.id, thickness, fontscale)
                         if show_trajectories:
                             img = self.plot_trackers_trajectories(img, a.history_observations, a.id)
-                
+        else:
+            for a in self.active_tracks:
+                if a.history_observations and len(a.history_observations) > 2:
+                    box = a.history_observations[-1]
+                    img = self.plot_box_on_img(img, box, a.conf, a.cls, a.id, thickness, fontscale)
+                    if show_trajectories:
+                        img = self.plot_trackers_trajectories(img, a.history_observations, a.id)
+        
         return img
 
+    # def plot_results(self, img: np.ndarray, keypoints, show_trajectories: bool, 
+    #             thickness: int = 2, fontscale: float = 0.5) -> np.ndarray:
+    #     """
+    #     Fixed version for Ultralytics Keypoints object
+    #     Handles both xy coordinates and confidence scores properly
+    #     """
+    #     # Get image dimensions
+    #     height, width = img.shape[:2]
+        
+    #     # COCO keypoint connections (1-based indices)
+    #     SKELETON = [
+    #         [16, 14], [14, 12], [17, 15], [15, 13], [12, 13], [6, 12], [7, 13], 
+    #         [6, 7], [6, 8], [7, 9], [8, 10], [9, 11], [2, 3], [1, 2], [1, 3], 
+    #         [2, 4], [3, 5], [4, 6], [5, 7]]
+        
+    #     if keypoints is not None:
+    #         try:
+    #             # Extract coordinates and confidence separately
+    #             kpts_xy = keypoints.xy[0].cpu().numpy()  # Shape: [17, 2]
+    #             kpts_conf = keypoints.conf[0].cpu().numpy()  # Shape: [17]
+                
+    #             print(f"Keypoints XY shape: {kpts_xy.shape}")
+    #             print(f"Keypoints Conf shape: {kpts_conf.shape}")
+                
+    #             # Draw keypoints
+    #             for i, ((x, y), conf) in enumerate(zip(kpts_xy, kpts_conf)):
+    #                 if conf > 0.5:  # Confidence threshold
+    #                     x, y = int(x), int(y)
+    #                     if 0 <= x < width and 0 <= y < height:
+    #                         cv.circle(img, (x, y), thickness+2, (0, 255, 0), -1)
+    #                         print(f"KP {i+1} at ({x},{y}) conf={conf:.2f}")
+                
+    #             # Draw connections
+    #             for i, j in SKELETON:
+    #                 idx1, idx2 = i-1, j-1  # Convert to 0-based
+    #                 if kpts_conf[idx1] > 0.5 and kpts_conf[idx2] > 0.5:
+    #                     x1, y1 = map(int, kpts_xy[idx1])
+    #                     x2, y2 = map(int, kpts_xy[idx2])
+    #                     if (0 <= x1 < width and 0 <= y1 < height and 
+    #                         0 <= x2 < width and 0 <= y2 < height):
+    #                         cv.line(img, (x1, y1), (x2, y2), (255, 0, 0), thickness)
+    #                         print(f"Conn {i}-{j}: ({x1},{y1})→({x2},{y2})")
+                
+    #         except Exception as e:
+    #             print(f"Keypoints processing error: {str(e)}")
+    #             import traceback
+    #             traceback.print_exc()
+        
+    #      # Original tracking visualization (unchanged)
+    #     if self.per_class_active_tracks is not None:
+    #         for k in self.per_class_active_tracks.keys():
+    #             active_tracks = self.per_class_active_tracks[k]
+    #             for a in active_tracks:
+    #                 if a.history_observations and len(a.history_observations) > 2:
+    #                     box = a.history_observations[-1]
+    #                     img = self.plot_box_on_img(img, box, a.conf, a.cls, a.id, thickness, fontscale)
+    #                     if show_trajectories:
+    #                         img = self.plot_trackers_trajectories(img, a.history_observations, a.id)
+    #     else:
+    #         for a in self.active_tracks:
+    #             if a.history_observations and len(a.history_observations) > 2:
+    #                 box = a.history_observations[-1]
+    #                 img = self.plot_box_on_img(img, box, a.conf, a.cls, a.id, thickness, fontscale)
+    #                 if show_trajectories:
+    #                     img = self.plot_trackers_trajectories(img, a.history_observations, a.id)
+        
+    #     return img
