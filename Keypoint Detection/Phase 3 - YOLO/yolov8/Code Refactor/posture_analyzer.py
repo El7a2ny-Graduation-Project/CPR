@@ -79,29 +79,46 @@ class PostureAnalyzer:
         
         return []
 
+    def check_correct_hand_position(self, keypoints, chest_point):
+        """Check if hands are in correct position (returns warning)"""
+        try:
+            left_wrist = keypoints[CocoKeypoints.LEFT_WRIST.value]
+            right_wrist = keypoints[CocoKeypoints.RIGHT_WRIST.value]
+            
+            # Calculate distance from chest to wrists
+            left_distance = np.linalg.norm(left_wrist - chest_point)
+            right_distance = np.linalg.norm(right_wrist - chest_point)
+
+            print(f"Left wrist distance: {left_distance}, Right wrist distance: {right_distance}")
+            
+            if left_distance > 100 and right_distance > 100:
+                return ["Hands not in correct position"]
+        except Exception as e:
+            print(f"Hand position check error: {e}")
+        
+        return []
+
     def validate_posture(self, keypoints, chest_point):
         """Run all posture validations (returns aggregated warnings)"""
         warnings = []
         warnings += self.check_bended_arms(keypoints)
         warnings += self.check_missing_arms(keypoints)
+        warnings += self.check_correct_hand_position(keypoints, chest_point)
         return warnings
 
     def display_warnings(self, frame, warnings):
-        """Display posture warnings on the frame"""
+
+        """Display all posture warnings at the top of the frame"""
+
         try:
-            # Display arm angle warnings
-            for i, warn in enumerate(w for w in warnings if w in ["Right arm bent", "Left arm bent"]):
-                pos = (self.warning_positions['arm_angles'][0],
-                       self.warning_positions['arm_angles'][1] + i*30)
-                cv2.putText(frame, warn, pos,
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-            
-            # Display one-handed CPR warning
-            if any("One-handed" in w for w in warnings):
-                cv2.putText(frame, "One-handed CPR detected!", 
-                           self.warning_positions['one_handed'],
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            if warnings:
+                # Join all warnings with commas
+                warning_text = ", ".join(warnings)
+                # Display the combined warning text at the top
+                cv2.putText(frame, warning_text,
+                            (10, 30),  # Top-left corner
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         except Exception as e:
             print(f"Warning display error: {e}")
-        
+
         return frame
