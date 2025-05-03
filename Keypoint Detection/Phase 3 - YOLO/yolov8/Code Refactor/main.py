@@ -23,6 +23,11 @@ class CPRAnalyzer:
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         print(f"[INFO] Video properties: {self.frame_count} frames, "
               f"{self.cap.get(cv2.CAP_PROP_FPS):.1f} FPS")
+        
+        # Sampling Configuration
+        self.original_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.sample_rate = 1  # Process every frame
+        self.effective_fps = self.original_fps / self.sample_rate
 
         # Get screen dimensions
         root = tk.Tk()
@@ -62,7 +67,6 @@ class CPRAnalyzer:
         print(f"[INIT] Completed in {time.time()-start_time:.2f}s\n")
         print("[PHASE] Starting main processing loop")
         
-        frame_counter = 0
         while self.cap.isOpened():
             ret, frame = self.cap.read()
             if not ret:
@@ -220,14 +224,14 @@ class CPRAnalyzer:
             
             print("[METRICS] Calculating depth and rate...")
             depth, rate = self.metrics_calculator.calculate_metrics(
-                self.role_classifier.shoulder_distances,
-                self.cap.get(cv2.CAP_PROP_FPS))
+                self.role_classifier.shoulder_distances, self.effective_fps
+            )
 
             print(f"[RESULTS] Compression Depth: {depth:.1f} cm")
             print(f"[RESULTS] Compression Rate: {rate:.1f} cpm")
             
             print("[VISUAL] Generating motion curve plot...")
-            self.metrics_calculator.plot_motion_curve()
+            self.metrics_calculator.plot_motion_curve(self.sample_rate)
             
         except Exception as e:
             print(f"[ERROR] Metric calculation failed: {str(e)}")

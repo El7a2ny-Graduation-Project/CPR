@@ -19,12 +19,16 @@ class MetricsCalculator:
     def smooth_midpoints(self, midpoints):
         """Apply Savitzky-Golay filter to smooth motion data"""
         self.midpoints_list = np.array(midpoints)
+
+        # Dynamically set window_length as 5% of the number of points
+        num_points = len(self.midpoints_list)
+        window_length = max(3, int(num_points * 0.05) | 1)  # Ensure it's an odd number and at least 3
         
         if len(self.midpoints_list) > 5:  # Ensure enough data points
             try:
                 self.y_smoothed = savgol_filter(
                     self.midpoints_list[:, 1], 
-                    window_length=10, 
+                    window_length=window_length, 
                     polyorder=2, 
                     mode='nearest'
                 )
@@ -44,15 +48,19 @@ class MetricsCalculator:
             return False
             
         try:
-            self.peaks_max, _ = find_peaks(self.y_smoothed, distance=10)
-            self.peaks_min, _ = find_peaks(-self.y_smoothed, distance=10)
+            # Dynamically set distance as 5% of the number of points
+            num_points = len(self.y_smoothed)
+            distance = max(1, int(num_points * 0.05))  # 5% of points, minimum of 1
+    
+            self.peaks_max, _ = find_peaks(self.y_smoothed, distance=distance)
+            self.peaks_min, _ = find_peaks(-self.y_smoothed, distance=distance)
             self.peaks = np.sort(np.concatenate((self.peaks_max, self.peaks_min)))
             return len(self.peaks) > 0
         except Exception as e:
             print(f"Peak detection error: {e}")
             return False
 
-    def calculate_metrics(self, shoulder_distances, fps):
+    def calculate_metrics(self, shoulder_distances, effective_fps):
         """Calculate compression metrics with improved calculations"""
         self.shoulder_distances = shoulder_distances
         
@@ -73,7 +81,7 @@ class MetricsCalculator:
             # Rate calculation using only compression peaks (peaks_max)
             rate = None
             if len(self.peaks_max) > 1:
-                rate = 1 / (np.mean(np.diff(self.peaks_max)) / fps) * 60  # Convert to CPM
+                rate = 1 / (np.mean(np.diff(self.peaks_max)) / effective_fps) * 60  # Convert to CPM
 
             return depth, rate
             
@@ -81,37 +89,43 @@ class MetricsCalculator:
             print(f"Metric calculation error: {e}")
             return None, None
 
-    def plot_motion_curve(self):
+    def plot_motion_curve(self, sample_rate):
         """Enhanced visualization with original and smoothed data"""
         if self.midpoints_list.size == 0:
             print("No midpoint data to plot")
             return
-
+    
         plt.figure(figsize=(12, 6))
         
+        # Scale x-axis to reflect original frame numbers
+        x_original = np.arange(len(self.midpoints_list)) * sample_rate
+        x_smoothed = np.arange(len(self.y_smoothed)) * sample_rate
+    
         # Plot original and smoothed data
-        plt.plot(self.midpoints_list[:, 1], 
-                label="Original Motion", 
-                color="red", 
-                linestyle="dashed", 
-                alpha=0.6)
-                
-        plt.plot(self.y_smoothed, 
-                label="Smoothed Motion", 
-                color="blue", 
-                linewidth=2)
-
+        plt.plot(x_original, 
+                 self.midpoints_list[:, 1], 
+                 label="Original Motion", 
+                 color="red", 
+                 linestyle="dashed", 
+                 alpha=0.6)
+                 
+        plt.plot(x_smoothed, 
+                 self.y_smoothed, 
+                 label="Smoothed Motion", 
+                 color="blue", 
+                 linewidth=2)
+    
         # Plot peaks if detected
         if self.peaks.size > 0:
-            plt.plot(self.peaks, 
-                    self.y_smoothed[self.peaks], 
-                    "x", 
-                    color="green", 
-                    markersize=10, 
-                    label="Peaks")
+            plt.plot(x_smoothed[self.peaks], 
+                     self.y_smoothed[self.peaks], 
+                     "x", 
+                     color="green", 
+                     markersize=10, 
+                     label="Peaks")
         else:
             print("No peaks to plot")
-
+    
         plt.xlabel("Frame Number")
         plt.ylabel("Vertical Position (px)")
         plt.title("Compression Motion Analysis")
