@@ -62,6 +62,7 @@ class CPRAnalyzer:
         print(f"[INIT] Completed in {time.time()-start_time:.2f}s\n")
         print("[PHASE] Starting main processing loop")
         
+        frame_counter = 0
         while self.cap.isOpened():
             ret, frame = self.cap.read()
             if not ret:
@@ -72,6 +73,7 @@ class CPRAnalyzer:
             print(f"\n[FRAME {int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))}/{self.frame_count}] Processing")
             
             frame = self._process_frame(frame)
+            
             self._display_frame(frame)
 
             if cv2.waitKey(1) == ord('q'):
@@ -150,7 +152,7 @@ class CPRAnalyzer:
         frame = self._draw_rescuer_box(frame, pose_results, rescuer_id)
         
         # Posture analysis
-        warnings = self.posture_analyzer.validate_posture(keypoints)
+        warnings = self.posture_analyzer.validate_posture(keypoints, self.chest_initializer.chest_point)
         frame = self.posture_analyzer.display_warnings(frame, warnings)
 
         if warnings:
@@ -237,5 +239,12 @@ class CPRAnalyzer:
             print("[CLEANUP] Resources released")
 
 if __name__ == "__main__":
+    start_time = time.time()
+    print("[START] CPR Analysis started")
+
     analyzer = CPRAnalyzer("video_4.mp4")
     analyzer.run_analysis()
+
+    end_time = time.time()
+    print(f"[END] Total execution time: {end_time - start_time:.2f}s")
+

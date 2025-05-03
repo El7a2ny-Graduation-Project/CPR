@@ -79,7 +79,7 @@ class PostureAnalyzer:
         
         return []
 
-    def validate_posture(self, keypoints):
+    def validate_posture(self, keypoints, chest_point):
         """Run all posture validations (returns aggregated warnings)"""
         warnings = []
         warnings += self.check_bended_arms(keypoints)
