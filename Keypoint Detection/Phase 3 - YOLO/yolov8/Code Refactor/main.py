@@ -242,7 +242,7 @@ if __name__ == "__main__":
     start_time = time.time()
     print("[START] CPR Analysis started")
 
-    analyzer = CPRAnalyzer("video_4.mp4")
+    analyzer = CPRAnalyzer("video_5.mp4")
     analyzer.run_analysis()
 
     end_time = time.time()
