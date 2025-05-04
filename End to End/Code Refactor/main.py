@@ -292,7 +292,7 @@ if __name__ == "__main__":
     start_time = time.time()
     print("[START] CPR Analysis started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Crowds\vid3.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_4.mp4"
 
     analyzer = CPRAnalyzer(video_path)
     analyzer.run_analysis()

@@ -66,8 +66,6 @@ class RoleClassifier:
         Classify roles of rescuer and patient based on detected keypoints and bounding boxes.
         """
 
-        print(f"Length of results: {len(results.boxes.xywh.cpu().numpy())}")
-
         processed_results = []
         
         # Calculate combined area threshold if previous boxes exist
@@ -111,6 +109,10 @@ class RoleClassifier:
                     'verticality_score': verticality_score,
                     'keypoints': keypoints,
                 })
+
+                #! For debugging purposes only print the original index and verticality score
+                print("################################################")
+                print(f"Original index: {i}, Verticality score: {verticality_score}, Bounding box: {bounding_box}")
             
             except Exception as e:
                 print(f"Error processing detection {i}: {e}")
