@@ -14,7 +14,7 @@ class PoseEstimator:
     def detect_poses(self, frame):
         """Detect human poses in a frame"""
         try:
-            results = self.model(frame, verbose=False)
+            results = self.model(frame, verbose=False, conf=self.min_confidence, show=False)
             if not results or len(results[0].keypoints.xy) == 0:
                 return None
             return results[0]

@@ -18,6 +18,7 @@ class PostureAnalyzer:
             'arm_angles': (50, 50),
             'one_handed': (50, 100)
         }
+        self.warnings = []
 
     def calculate_angle(self, a, b, c):
         """Calculate angle between three points"""
@@ -86,22 +87,23 @@ class PostureAnalyzer:
         warnings += self.check_missing_arms(keypoints)
         return warnings
 
-    def display_warnings(self, frame, warnings):
+    def display_warnings(self, frame):
         """Display posture warnings on the frame"""
-        try:
-            # Display arm angle warnings
-            for i, warn in enumerate(w for w in warnings if w in ["Right arm bent", "Left arm bent"]):
-                pos = (self.warning_positions['arm_angles'][0],
-                       self.warning_positions['arm_angles'][1] + i*30)
-                cv2.putText(frame, warn, pos,
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        if len(self.warnings) != 0:
+            try:
+                # Display arm angle warnings
+                for i, warn in enumerate(w for w in self.warnings if w in ["Right arm bent", "Left arm bent"]):
+                    pos = (self.warning_positions['arm_angles'][0],
+                        self.warning_positions['arm_angles'][1] + i*30)
+                    cv2.putText(frame, warn, pos,
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                
+                # Display one-handed CPR warning
+                if any("One-handed" in w for w in self.warnings):
+                    cv2.putText(frame, "One-handed CPR detected!", 
+                            self.warning_positions['one_handed'],
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            except Exception as e:
+                print(f"Warning display error: {e}")
             
-            # Display one-handed CPR warning
-            if any("One-handed" in w for w in warnings):
-                cv2.putText(frame, "One-handed CPR detected!", 
-                           self.warning_positions['one_handed'],
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-        except Exception as e:
-            print(f"Warning display error: {e}")
-        
         return frame
