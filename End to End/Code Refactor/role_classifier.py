@@ -14,36 +14,23 @@ class RoleClassifier:
         self.rescuer_processed_results = None
         self.patient_processed_results = None
 
-    def _calculate_verticality_score(self, keypoints):
-        """Calculate posture verticality score (0=horizontal, 1=vertical) based on shoulder-hip alignment.
-        """
+    def _calculate_verticality_score(self, bounding_box):
+        """Calculate posture verticality score (0=horizontal, 1=vertical) using bounding box aspect ratio."""
         try:
-            # Get shoulder and hip keypoints using enum
-            left_shoulder = keypoints[CocoKeypoints.LEFT_SHOULDER.value]
-            right_shoulder = keypoints[CocoKeypoints.RIGHT_SHOULDER.value]
-            left_hip = keypoints[CocoKeypoints.LEFT_HIP.value]
-            right_hip = keypoints[CocoKeypoints.RIGHT_HIP.value]
+            x1, y1, x2, y2 = bounding_box
+            width = abs(x2 - x1)
+            height = abs(y2 - y1)
             
-            # Calculate midpoints
-            shoulder_midpoint = (
-                (left_shoulder[0] + right_shoulder[0]) / 2,
-                (left_shoulder[1] + right_shoulder[1]) / 2
-            )
-            hip_midpoint = (
-                (left_hip[0] + right_hip[0]) / 2,
-                (left_hip[1] + right_hip[1]) / 2
-            )
+            # Handle edge cases with invalid dimensions
+            if width == 0 or height == 0:
+                return -1
             
-            # Calculate differences
-            horizontal_diff = abs(shoulder_midpoint[0] - hip_midpoint[0])
-            vertical_diff = abs(shoulder_midpoint[1] - hip_midpoint[1])
+            return 1 if height > width else 0  # 1 for vertical, 0 for horizontal
             
-            return 0 if horizontal_diff > 1.5 * vertical_diff else 1
-            
-        except (IndexError, KeyError, TypeError) as e:
+        except (TypeError, ValueError) as e:
             print(f"Verticality score calculation error: {e}")
-            return -1  # Invalid score
-    
+            return -1
+        
     def _calculate_bounding_box_center(self, bounding_box):
         """Calculate the center coordinates of a bounding box.
         """
@@ -79,6 +66,8 @@ class RoleClassifier:
         Classify roles of rescuer and patient based on detected keypoints and bounding boxes.
         """
 
+        print(f"Length of results: {len(results.boxes.xywh.cpu().numpy())}")
+
         processed_results = []
         
         # Calculate combined area threshold if previous boxes exist
@@ -111,7 +100,7 @@ class RoleClassifier:
                         continue
                 
                 # Calculate features
-                verticality_score = self._calculate_verticality_score(keypoints)
+                verticality_score = self._calculate_verticality_score(bounding_box)
                 bounding_box_center = self._calculate_bounding_box_center(bounding_box)
                 
                 # Store valid results
@@ -126,7 +115,7 @@ class RoleClassifier:
             except Exception as e:
                 print(f"Error processing detection {i}: {e}")
                 continue
-                
+
         # Step 2: Identify the patient (horizontal posture)
         patient_candidates = [res for res in processed_results 
                             if res['verticality_score'] == 0]

@@ -13,36 +13,24 @@ class ChestInitializer:
         try:
             # Unpack bounding box and calculate shoulder dimensions
             bbox_x1, bbox_y1, bbox_x2, bbox_y2 = bounding_box
-            bbox_delta_y = bbox_y2 - bbox_y1
+            bbox_delta_y = abs(bbox_y2 - bbox_y1)
 
-            # Keypoints for eyes and shoulders
-            left_eye = keypoints[CocoKeypoints.LEFT_EYE.value]
-            right_eye = keypoints[CocoKeypoints.RIGHT_EYE.value]
+            # Keypoints for shoulders
             left_shoulder = keypoints[CocoKeypoints.LEFT_SHOULDER.value]
             right_shoulder = keypoints[CocoKeypoints.RIGHT_SHOULDER.value]
 
             # Midpoints calculation
-            eye_center = np.array([(left_eye[0] + right_eye[0]) / 2,
-                                    (left_eye[1] + right_eye[1]) / 2])
             shoulder_center = np.array([(left_shoulder[0] + right_shoulder[0]) / 2,
                                         (left_shoulder[1] + right_shoulder[1]) / 2])
             
-            # Direction from eyes to shoulders
-            eye_shoulder_vec = shoulder_center - eye_center
-            distance = np.linalg.norm(eye_shoulder_vec)
-            if distance > 0:
-                direction = eye_shoulder_vec / distance
-            else:
-                direction = np.array([0, 0])
-
             # Calculate chest center by applying directional adjustment separately for x and y
-            chest_center_x = shoulder_center[0] + 3 * direction[0] * distance
-            chest_center_y = shoulder_center[1] - 1 * direction[1] * distance
+            chest_center_x = shoulder_center[0] - 0.5 * bbox_delta_y
+            chest_center_y = shoulder_center[1] - 0.1 * bbox_delta_y
             chest_center = np.array([chest_center_x, chest_center_y])
 
             # Chest dimensions (85% of shoulder width, 40% height)
             chest_dx = bbox_delta_y * 0.8
-            chest_dy = bbox_delta_y * 0.6
+            chest_dy = bbox_delta_y * 0.8
 
             # Calculate region coordinates
             x1 = chest_center[0] - chest_dx / 2
