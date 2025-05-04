@@ -109,10 +109,6 @@ class RoleClassifier:
                     'verticality_score': verticality_score,
                     'keypoints': keypoints,
                 })
-
-                #! For debugging purposes only print the original index and verticality score
-                print("################################################")
-                print(f"Original index: {i}, Verticality score: {verticality_score}, Bounding box: {bounding_box}")
             
             except Exception as e:
                 print(f"Error processing detection {i}: {e}")

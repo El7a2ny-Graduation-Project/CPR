@@ -153,20 +153,17 @@ class CPRAnalyzer:
 
         print(f"[CHEST ESTIMATION] Done")
 
-        #& Posture Analysis
-        print(f"[POSTURE ANALYSIS] Starting...")
+        #& Posture Analysis (Phase 1: No Midpoint)
+        print(f"[POSTURE ANALYSIS 1] Starting...")
 
-        warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"], self.chest_initializer.chest_params[:2])
+        warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"])
 
         if warnings:
-            print(f"[WARNING] Posture issues: {', '.join(warnings)}")
+                print(f"[WARNING 1] Posture issues: {', '.join(warnings)}")
 
-        #^ Set Params in Posture Analyzer (to draw later)
-        self.posture_analyzer.warnings = warnings
+        print(f"[POSTURE ANALYSIS 1] Done")
 
-        print(f"[POSTURE ANALYSIS] Done")
-
-        if len(self.posture_analyzer.warnings) == 0:
+        if len(warnings) == 0:
             print("[PROCESS] No warnings detected")
 
             #& Wrist Midpoint Detection
@@ -184,12 +181,25 @@ class CPRAnalyzer:
             if not midpoint:
                 print("[PROCESS] Insufficient data for analysis")
                 return None
-            
+
+            print(f"[WRIST MIDPOINT ANALYSIS] Done")
+
+            #& Posture Analysis (Phase 2: With Midpoint)
+            print(f"[POSTURE ANALYSIS 2] Starting...")
+            warnings = self.posture_analyzer.check_hands_on_chest(midpoint, chest_params)    
+
+            if warnings:
+                print(f"[WARNING 2] Posture issues: {', '.join(warnings)}")
+
+            print(f"[POSTURE ANALYSIS 2] Done")
+
+        #^ Set Params in Posture Analyzer (to draw later)
+        self.posture_analyzer.warnings = warnings  
+
+        if len(warnings) == 0:
             #^ Set Params in Role Classifier (to draw later)
             self.wrists_midpoint_analyzer.midpoint = midpoint
             self.wrists_midpoint_analyzer.midpoint_history.append(midpoint)
-
-            print(f"[WRIST MIDPOINT ANALYSIS] Done")
 
             #& Shoulder Distance Calculation
             print(f"[SHOULDER DISTANCE ANALYSIS] Starting...")
@@ -273,6 +283,10 @@ class CPRAnalyzer:
                 self.shoulders_analyzer.shoulder_distances,
                 self.cap.get(cv2.CAP_PROP_FPS))
 
+            if depth is None or rate is None:
+                print("[ERROR] Depth and rate calculation failed")
+                return
+            
             print(f"[RESULTS] Compression Depth: {depth:.1f} cm")
             print(f"[RESULTS] Compression Rate: {rate:.1f} cpm")
             
@@ -292,7 +306,7 @@ if __name__ == "__main__":
     start_time = time.time()
     print("[START] CPR Analysis started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_4.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
 
     analyzer = CPRAnalyzer(video_path)
     analyzer.run_analysis()

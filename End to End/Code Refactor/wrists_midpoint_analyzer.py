@@ -5,7 +5,8 @@ from keypoints import CocoKeypoints
 class WristsMidpointAnalyzer:
     """Analyzes and tracks wrist midpoints for rescuer"""
     
-    def __init__(self):
+    def __init__(self, allowed_distance_between_wrists=170):
+        self.allowed_distance_between_wrists = allowed_distance_between_wrists
         self.midpoint = None
         self.midpoint_history = []
 
@@ -18,6 +19,11 @@ class WristsMidpointAnalyzer:
             # Get wrist coordinates
             lw = rescuer_keypoints[CocoKeypoints.LEFT_WRIST.value]
             rw = rescuer_keypoints[CocoKeypoints.RIGHT_WRIST.value]
+
+            # If the distance between wrists is too large, return None
+            distance = np.linalg.norm(np.array(lw) - np.array(rw))
+            if distance > self.allowed_distance_between_wrists:
+                return None
             
             # Calculate midpoint
             midpoint = (

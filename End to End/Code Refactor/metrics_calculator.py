@@ -68,11 +68,13 @@ class MetricsCalculator:
             # Depth calculation using all peaks
             depth = None
             if len(self.peaks) > 1:
+                print("Peaks detected")
                 depth = np.mean(np.abs(np.diff(self.y_smoothed[self.peaks]))) * self.cm_px_ratio
 
             # Rate calculation using only compression peaks (peaks_max)
             rate = None
             if len(self.peaks_max) > 1:
+                print("Max peaks detected")
                 rate = 1 / (np.mean(np.diff(self.peaks_max)) / fps) * 60  # Convert to CPM
 
             return depth, rate
