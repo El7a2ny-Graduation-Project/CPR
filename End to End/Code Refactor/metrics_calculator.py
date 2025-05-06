@@ -59,7 +59,7 @@ class MetricsCalculator:
 
     def _validate_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
             # Calculate expected number of frames and verify it matches data length
-            num_frames = chunk_end_frame_index - chunk_start_frame_index
+            num_frames = chunk_end_frame_index - chunk_start_frame_index + 1
             assert len(self.midpoints_list[:, 1]) == num_frames, \
                 f"Data length {len(self.midpoints_list[:, 1])} doesn't match frame range {num_frames}"
             assert len(self.y_smoothed) == num_frames, \
@@ -111,9 +111,9 @@ class MetricsCalculator:
         
         self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
 
-
         # Create frame index array for x-axis
-        frame_indices = np.arange(chunk_start_frame_index, chunk_end_frame_index)
+        frame_indices = np.arange(chunk_start_frame_index, chunk_end_frame_index + 1)
+
 
         plt.figure(figsize=(12, 6))
         
@@ -123,7 +123,7 @@ class MetricsCalculator:
                 color="red", 
                 linestyle="dashed", 
                 alpha=0.6)
-                
+    
         plt.plot(frame_indices, self.y_smoothed, 
                 label="Smoothed Motion", 
                 color="blue", 

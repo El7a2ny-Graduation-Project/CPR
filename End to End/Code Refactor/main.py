@@ -56,15 +56,17 @@ class CPRAnalyzer:
 
     def run_analysis(self):
         """Main processing loop with execution tracing"""
-        #^ Note that frames are 1 indexed in OpenCV, so we need to adjust accordingly
 
         try:
             print("[PHASE] Starting main processing loop")
 
-            chunk_start_frame_index = 1
-            frame_counter = 1
+            
+            first_time_to_have_a_proccessed_frame = True
+            waiting_to_start_new_chunk = False
 
             while self.cap.isOpened():
+                frame_counter = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                
                 #& Read frame
                 ret, frame = self.cap.read()
                 if not ret:
@@ -73,48 +75,46 @@ class CPRAnalyzer:
                 
                 #& Rotate frame
                 frame = self._handle_frame_rotation(frame)
-                print(f"\n[FRAME {int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))}/{self.frame_count}] Processing")
+                print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}] Processing")
                 
                 #& Process frame
                 processed_frame, is_complete_chunk = self._process_frame(frame)
                 
                 #& Display frame
+                print(f"waiting_to_start_new_chunk: {waiting_to_start_new_chunk}, is_complete_chunk: {is_complete_chunk}")
+
                 if processed_frame is not None:
                     self._display_frame(processed_frame)
+                    if first_time_to_have_a_proccessed_frame:
+                        print("[INFO] First processed frame displayed")
+                        first_time_to_have_a_proccessed_frame = False
+                        chunk_start_frame_index = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
                 else:
                     self._display_frame(frame)
-                    print("##################################################################################################")
-                    print(f"Frame {frame_counter} skipped due to insufficient data")
-                    chunk_start_frame_index = frame_counter + 1
-
-                # Start: 0
-                # Posture Warning: 5
-                # Midpoints passed: (5-0) -1
-
-                # Start: 0
-                # End: 5
-                #Midpoints passed: (5-0)
                 
+                if waiting_to_start_new_chunk and not is_complete_chunk:
+                    print("[INFO] Waiting to start new chunk")
+                    waiting_to_start_new_chunk = False
+                    chunk_start_frame_index = frame_counter
+                    print(f"[INFO] New chunk started at frame {chunk_start_frame_index}")
+
                 #& Check for chunk completion and if so calculate metrics
-                if is_complete_chunk or frame_counter == self.frame_count - 1:                  
+                if (is_complete_chunk or frame_counter == self.frame_count - 1) and not waiting_to_start_new_chunk:                  
                     if is_complete_chunk:
-                        print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} inclusive to {frame_counter} exclusive")
-                        self._calculate_rate_and_depth(chunk_start_frame_index, frame_counter - 1)
-                        self._display_motion_plot(chunk_start_frame_index, frame_counter - 1)
+                        chunk_end_frame_index = frame_counter - 1                
+                    elif frame_counter == self.frame_count - 1:
+                        chunk_end_frame_index = frame_counter
+
+                    print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} to {chunk_end_frame_index}")
                     
-                        chunk_start_frame_index = frame_counter
-                    
-                        self.shoulders_analyzer.reset_shoulder_distances()
-                        self.wrists_midpoint_analyzer.reset_midpoint_history()
-                    
-                    if frame_counter == self.frame_count - 1:
-                        print("[CHUNK] Last chunk detected")
-                        print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} inclusive to {frame_counter} inclusive")
-                        self._calculate_rate_and_depth(chunk_start_frame_index, frame_counter)
-                        self._display_motion_plot(chunk_start_frame_index, frame_counter)
+                    self._calculate_rate_and_depth(chunk_start_frame_index, chunk_end_frame_index)
+                    self._display_motion_plot(chunk_start_frame_index, chunk_end_frame_index)
                 
-                frame_counter += 1
+                    waiting_to_start_new_chunk = True
                 
+                    self.shoulders_analyzer.reset_shoulder_distances()
+                    self.wrists_midpoint_analyzer.reset_midpoint_history()
+                                
                 #& Check for user interrupt (close window)
                 if cv2.waitKey(1) == ord('q'):
                     print("\n[USER] Analysis interrupted by user")
