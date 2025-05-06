@@ -89,13 +89,11 @@ class MetricsCalculator:
             # Depth calculation using all peaks
             depth = None
             if len(self.peaks) > 1:
-                print("Peaks detected")
                 depth = np.mean(np.abs(np.diff(self.y_smoothed[self.peaks]))) * self.cm_px_ratio
 
             # Rate calculation using only compression peaks (peaks_max)
             rate = None
             if len(self.peaks_max) > 1:
-                print("Max peaks detected")
                 rate = 1 / (np.mean(np.diff(self.peaks_max)) / fps) * 60  # Convert to CPM
 
             # Store the results of this chunk for the final report if they are not None
@@ -194,70 +192,6 @@ class MetricsCalculator:
         print(f"[RESULTS] Weighted average rate: {weighted_rate:.1f} cpm")
         
         return weighted_depth, weighted_rate
-    
-    # def plot_motion_curve_for_all_chunks(self):
-    #     """Plot combined analysis across all chunks with posture error regions"""
-    #     if not self.chunks_start_and_end_indices:
-    #         print("No chunk data available for plotting")
-    #         return
-
-    #     plt.figure(figsize=(14, 8))
-    #     ax = plt.gca()
-        
-    #     # Sort chunks chronologically
-    #     sorted_chunks = sorted(self.chunks_start_and_end_indices, key=lambda x: x[0])
-        
-    #     # 1. Plot all valid chunks
-    #     for idx, (start, end) in enumerate(sorted_chunks):
-    #         chunk_frames = np.arange(start, end + 1)
-    #         midpoints = self.chunks_midpoints[idx]
-    #         smoothed = self.chunks_smoothed[idx]
-    #         peaks = self.chunks_peaks[idx]
-            
-    #         # Plot original and smoothed data
-    #         ax.plot(chunk_frames, midpoints[:, 1], 
-    #             color="red", linestyle="dashed", alpha=0.6,
-    #             label="Original Motion" if idx == 0 else "")
-    #         ax.plot(chunk_frames, smoothed,
-    #             color="blue", linewidth=2,
-    #             label="Smoothed Motion" if idx == 0 else "")
-            
-    #         # Plot peaks
-    #         if peaks.size > 0:
-    #             ax.plot(chunk_frames[peaks], smoothed[peaks],
-    #                 "x", color="green", markersize=8,
-    #                 label="Peaks" if idx == 0 else "")
-
-    #     # 2. Identify posture error regions
-    #     error_regions = []
-        
-    #     # Check space before first chunk
-    #     if sorted_chunks[0][0] > 0:
-    #         error_regions.append((0, sorted_chunks[0][0]-1))
-        
-    #     # Check gaps between chunks
-    #     for i in range(1, len(sorted_chunks)):
-    #         prev_end = sorted_chunks[i-1][1]
-    #         curr_start = sorted_chunks[i][0]
-    #         if curr_start - prev_end > 1:
-    #             error_regions.append((prev_end + 1, curr_start - 1))
-
-    #     # 3. Shade error regions
-    #     for region in error_regions:
-    #         ax.axvspan(region[0], region[1], 
-    #                 color='gray', alpha=0.2, 
-    #                 label='Posture Errors' if region == error_regions[0] else "")
-
-    #     # 4. Configure legend
-    #     handles, labels = ax.get_legend_handles_labels()
-    #     unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
-    #     ax.legend(*zip(*unique))
-
-    #     plt.xlabel("Frame Number")
-    #     plt.ylabel("Vertical Position (px)")
-    #     plt.title("Combined Motion Analysis with Posture Error Regions")
-    #     plt.grid(True)
-    #     plt.show()
 
     def plot_motion_curve_for_all_chunks(self):
         """Plot combined analysis with metrics annotations and posture error labels"""

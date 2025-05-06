@@ -17,24 +17,27 @@ class CPRAnalyzer:
     
     def __init__(self, video_path):
         print(f"\n[INIT] Initializing CPR Analyzer for: {video_path}")
+        
+        #& Open video file
         self.cap = cv2.VideoCapture(video_path)
         if not self.cap.isOpened():
             print("[ERROR] Failed to open video file")
             return
+        print("[INIT] Video file opened successfully")
 
+        #& Get video properties
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        print(f"[INFO] Video properties: {self.frame_count} frames, "
-              f"{self.cap.get(cv2.CAP_PROP_FPS):.1f} FPS")
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        print(f"[INIT] Video has {self.frame_count} frames at {self.fps:.2f} FPS")
 
-        # Get screen dimensions
+        #& Get screen dimensions
         root = tk.Tk()
         self.screen_width = root.winfo_screenwidth()
         self.screen_height = root.winfo_screenheight()
         root.destroy()
+        print(f"[INIT] Detected screen resolution: {self.screen_width}x{self.screen_height}")
         
-        print(f"[DISPLAY] Detected screen resolution: {self.screen_width}x{self.screen_height}")
-        
-        # Initialize components
+        #& Initialize system components
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
         self.role_classifier = RoleClassifier()
         self.chest_initializer = ChestInitializer()
@@ -42,228 +45,234 @@ class CPRAnalyzer:
         self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=250, left_arm_angle_threshold=150)
         self.wrists_midpoint_analyzer = WristsMidpointAnalyzer()
         self.shoulders_analyzer = ShouldersAnalyzer()
+        print("[INIT] System components initialized")
         
-        # Window configuration
+        #& Configure display window
         self.window_name = "CPR Analysis"
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        print("[INIT] System components initialized successfully")
+        print(f"[INIT] Window '{self.window_name}' created")
 
-        # For filtering
+        #& Keep track of previous results for continuity
         self.prev_rescuer_processed_results = None
         self.prev_patient_processed_results = None
         self.prev_chest_params = None
         self.prev_midpoint = None
+        print("[INIT] Previous results initialized")
 
     def run_analysis(self):
-        """Main processing loop with execution tracing"""
-
         try:
-            print("[PHASE] Starting main processing loop")
+            print("\n[RUN ANALYSIS] Starting analysis")
 
-            
+            main_loop_start_time = time.time()
+
+            #& Initialize variables used in handling chunks
             first_time_to_have_a_proccessed_frame = True
             waiting_to_start_new_chunk = False
 
+            print("[RUN ANALYSIS] Starting main execution loop")
+            #& Main execution loop
             while self.cap.isOpened():
+                # Retrieve the current position of the video frame being processed in the video capture object (self.cap).
                 frame_counter = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}]")
                 
-                #& Read frame
+                # Read frame
                 ret, frame = self.cap.read()
                 if not ret:
-                    print("\n[INFO] End of video stream reached")
+                    print("[ERROR] Failed to read frame or end of video reached")
                     break
+                print(f"[RUN ANALYSIS] Read frame")
                 
-                #& Rotate frame
+                # Rotate frame
                 frame = self._handle_frame_rotation(frame)
-                print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}] Processing")
-                
-                #& Process frame
-                processed_frame, is_complete_chunk = self._process_frame(frame)
-                
-                #& Display frame
-                print(f"waiting_to_start_new_chunk: {waiting_to_start_new_chunk}, is_complete_chunk: {is_complete_chunk}")
+                print(f"[RUN ANALYSIS] Rotated frame")
 
+                # Process frame
+                processed_frame, is_complete_chunk = self._process_frame(frame)
+                print(f"[RUN ANALYSIS] Processed frame")
+                
+                # Display frame
                 if processed_frame is not None:
-                    self._display_frame(processed_frame)
+                    # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
+                    # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
+                    # This is why the first chunk starts from the first frame that has been processed successfully.
                     if first_time_to_have_a_proccessed_frame:
-                        print("[INFO] First processed frame displayed")
                         first_time_to_have_a_proccessed_frame = False
+                        #! What happens when I use frame_counter instead of self.cap.get(cv2.CAP_PROP_POS_FRAMES)?
                         chunk_start_frame_index = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                        print(f"[RUN ANALYSIS] First processed frame detected")
+                    
+                    self._display_frame(processed_frame)
                 else:
                     self._display_frame(frame)
+                print(f"[RUN ANALYSIS] Displayed frame")
                 
+                # When a "Posture Error" occurs, a chunk is considered complete, and the program becomes ready to start a new chunk.
+                # is_complete_chunk is returned as true for every frame that has a "Posture Error" in it, and false for every other frame.
+                # This is why we need to wait for a frame with a false is_complete_chunk to start a new chunk.
                 if waiting_to_start_new_chunk and not is_complete_chunk:
-                    print("[INFO] Waiting to start new chunk")
                     waiting_to_start_new_chunk = False
                     chunk_start_frame_index = frame_counter
-                    print(f"[INFO] New chunk started at frame {chunk_start_frame_index}")
+                    print(f"[RUN ANALYSIS] A new chunk is starting")
 
-                #& Check for chunk completion and if so calculate metrics
-                if (is_complete_chunk or frame_counter == self.frame_count - 1) and not waiting_to_start_new_chunk:                  
+                # Check if a the current chunks is complete the calculate the metrics for it.
+                if (is_complete_chunk or frame_counter == self.frame_count - 1) and not waiting_to_start_new_chunk:  
+                    print(f"[RUN ANALYSIS] Chunk completion detected")
+
+                    # The difference here results from the fact a first middle chunk is terminated by a "Posture Error" which is a frame not included in the chunk.
+                    # While the last chunk is terminated by the end of the video, which is a frame included in the chunk.
                     if is_complete_chunk:
                         chunk_end_frame_index = frame_counter - 1                
                     elif frame_counter == self.frame_count - 1:
                         chunk_end_frame_index = frame_counter
+                    print(f"[RUN ANALYSIS] Determined the last frame of the chunk")
 
-                    print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} to {chunk_end_frame_index}")
-                    
-                    self._calculate_rate_and_depth(chunk_start_frame_index, chunk_end_frame_index)
-                    # self._display_motion_plot(chunk_start_frame_index, chunk_end_frame_index)
-                    #                 
+                    self._calculate_rate_and_depth_for_chunk(chunk_start_frame_index, chunk_end_frame_index)
+                    print(f"[RUN ANALYSIS] Calculated metrics for the chunk")
+              
                     waiting_to_start_new_chunk = True
                 
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
+                    print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
                                 
-                #& Check for user interrupt (close window)
+                # Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):
-                    print("\n[USER] Analysis interrupted by user")
+                    print("\n[RUN ANALYSIS] Analysis interrupted by user")
                     break
+
+            main_loop_end_time = time.time()
+            elapsed_time = main_loop_end_time - main_loop_start_time
+            print(f"[TIMING] Main loop elapsed time: {elapsed_time:.2f}s")
+
         except Exception as e:
             print(f"[ERROR] An error occurred during main execution loop: {str(e)}")
+
         finally:
+            report_and_plot_start_time = time.time()
+
+            #& Cleanup, calculate averages, and plot full motion curve
             self.cap.release()
             cv2.destroyAllWindows()
-            print("[CLEANUP] Resources released")            
+            print("[RUN ANALYSIS] Released video capture and destroyed all windows")         
 
-            print("[REPORT] Calculating final metrics")
-            self._calculate_weighted_avg_rate_and_depth()
-            self._plot_full_motion_curve()
-            print("[REPORT] Final metrics calculated")
+            self._calculate_rate_and_depth_for_all_chunks()
+            print("[RUN ANALYSIS] Calculated weighted averages of the metrics across all chunks")
+
+            self._plot_full_motion_curve_for_all_chunks()
+            print("[RUN ANALYSIS] Plotted full motion curve")
+
+            report_and_plot_end_time = time.time()
+            report_and_plot_elapsed_time = report_and_plot_end_time - report_and_plot_start_time
+            print(f"[TIMING] Report and plot elapsed time: {report_and_plot_elapsed_time:.2f}s")
 
     def _handle_frame_rotation(self, frame):
-        """Handle frame rotation without adjusting chest point"""
+        #! Till now, the code has only been testes on portrait videos.
         if frame.shape[1] > frame.shape[0]:  # Width > Height
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         return frame
 
     def _process_frame(self, frame):
-        """Process frame with execution tracing"""
-        processing_start = time.time()
-
         #* Chunk Completion Check
         is_complete_chunk = False
         
         #& Pose Estimation
-        print(f"[POSE ESTIMATION] Starting...")
-
         pose_results = self.pose_estimator.detect_poses(frame)
         
         if not pose_results:
-            print("[POSE ESTIMATION] No poses detected in frame")
+            print("[POSE ESTIMATION] No poses detected")
             return frame, is_complete_chunk
-            
         print(f"[POSE ESTIMATION] Detected {len(pose_results.boxes)} people")
-
-        print(f"[POSE ESTIMATION] Done")
-
+        
         #& Rescuer and Patient Classification
-        print(f"[ROLE CLASSIFICATION] Starting...")
-
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
 
         #~ Handle Failed Classifications OR Update Previous Results
         if not rescuer_processed_results:
             rescuer_processed_results = self.prev_rescuer_processed_results
-            print("[ROLE CLASSIFICATION] No rescuer detected, using previous results")
+            print("[ROLE CLASSIFICATION] No rescuer detected, using previous results (could be None)")
         else:
             self.prev_rescuer_processed_results = rescuer_processed_results
 
         if not patient_processed_results:
             patient_processed_results = self.prev_patient_processed_results
-            print("[ROLE CLASSIFICATION] No patient detected, using previous results")
+            print("[ROLE CLASSIFICATION] No patient detected, using previous results (could be None)")
         else:
             self.prev_patient_processed_results = patient_processed_results
         
         if not rescuer_processed_results or not patient_processed_results:
-            print("[ROLE CLASSIFICATION] Insufficient data for analysis")
+            print("[ROLE CLASSIFICATION] Insufficient data for processing")
             return None, is_complete_chunk
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
         self.role_classifier.patient_processed_results = patient_processed_results
-
-        print(f"[ROLE CLASSIFICATION] Done")
-        
+        print(f"[ROLE CLASSIFICATION] Updated role classifier with new results")
+    
         #& Chest Estimation
-        print(f"[CHEST ESTIMATION] Starting...")
-
         chest_params = self.chest_initializer.estimate_chest_region(patient_processed_results["keypoints"], patient_processed_results["bounding_box"], frame_width=frame.shape[1], frame_height=frame.shape[0])
 
         #~ Handle Failed Estimation or Update Previous Results
         if not chest_params:
             chest_params = self.prev_chest_params
-            print("[PROCESS] No chest region detected, using previous results")
+            print("[CHEST ESTIMATION] No chest region detected, using previous results (could be None)")
         else:
             self.prev_chest_params = chest_params
 
         if not chest_params:
-            print("[PROCESS] Insufficient data for analysis")
+            print("[CHEST ESTIMATION] Insufficient data for processing")
             return None, is_complete_chunk
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
-
-        print(f"[CHEST ESTIMATION] Done")
+        print(f"[CHEST ESTIMATION] Updated chest initializer with new results")
 
         #& Posture Analysis (Phase 1: No Midpoint)
-        print(f"[POSTURE ANALYSIS 1] Starting...")
-
         warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"])
 
         if warnings:
-                print(f"[WARNING 1] Posture issues: {', '.join(warnings)}")
-
-        print(f"[POSTURE ANALYSIS 1] Done")
+            print(f"[POSTURE ANALYSIS 1] Posture issues: {', '.join(warnings)}")
+        else:
+            print("[POSTURE ANALYSIS 1] No posture issues detected")
 
         if len(warnings) == 0:
-            print("[PROCESS] No warnings detected")
-
             #& Wrist Midpoint Detection
-            print(f"[WRIST MIDPOINT ANALYSIS] Starting...")
-
             midpoint = self.wrists_midpoint_analyzer.detect_wrists_midpoint(rescuer_processed_results["keypoints"])
 
             #~ Handle Failed Detection or Update Previous Results
             if not midpoint:
                 midpoint = self.prev_midpoint
-                print("[PROCESS] No midpoint detected, using previous results")
+                print("[WRIST MIDPOINT DETECTION] No midpoint detected, using previous results (could be None)")
             else:
                 self.prev_midpoint = midpoint
             
             if not midpoint:
-                print("[PROCESS] Insufficient data for analysis")
+                print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
                 return None, is_complete_chunk
 
-            print(f"[WRIST MIDPOINT ANALYSIS] Done")
-
             #& Posture Analysis (Phase 2: With Midpoint)
-            print(f"[POSTURE ANALYSIS 2] Starting...")
             warnings = self.posture_analyzer.check_hands_on_chest(midpoint, chest_params)    
 
             if warnings:
-                print(f"[WARNING 2] Posture issues: {', '.join(warnings)}")
-
-            print(f"[POSTURE ANALYSIS 2] Done")
+                print(f"[POSTURE ANALYSIS 2] Posture issues: {', '.join(warnings)}")
+            else:
+                print("[POSTURE ANALYSIS 2] No posture issues detected")
 
         #^ Set Params in Posture Analyzer (to draw later)
         self.posture_analyzer.warnings = warnings  
+        print(f"[POSTURE ANALYSIS] Updated posture analyzer with new results")
 
         if len(warnings) == 0:
             #^ Set Params in Role Classifier (to draw later)
             self.wrists_midpoint_analyzer.midpoint = midpoint
             self.wrists_midpoint_analyzer.midpoint_history.append(midpoint)
+            print(f"[WRIST MIDPOINT DETECTION] Updated wrist midpoint analyzer with new results")
 
             #& Shoulder Distance Calculation
-            print(f"[SHOULDER DISTANCE ANALYSIS] Starting...")
-
             self.shoulders_analyzer.append_new_shoulder_distance(rescuer_processed_results["keypoints"])
-
-            print(f"[SHOULDER DISTANCE ANALYSIS] Done")
+            print(f"[SHOULDER DISTANCE] Updated shoulder distance analyzer with new results")
 
         #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
-        print(f"[VISUALIZATION] Starting...")
-
         # Bounding boxes and keypoints
         if frame is not None:
             frame = self.role_classifier.draw_rescuer_and_patient(frame)
@@ -285,18 +294,13 @@ class CPRAnalyzer:
                 frame = self.wrists_midpoint_analyzer.draw_midpoint(frame)   
                 print(f"[VISUALIZATION] Drawn midpoint")    
 
-        print(f"[VISUALIZATION] Done") 
-
+        #* Chunk Completion Check
         if len(warnings) != 0:
             is_complete_chunk = True
     
-        print(f"[PROCESS] Frame processed in {(time.time()-processing_start)*1000:.1f}ms")
         return frame, is_complete_chunk
 
-    def _display_frame(self, frame):
-        """Adaptive window sizing with aspect ratio preservation"""
-        display_start = time.time()
-        
+    def _display_frame(self, frame):        
         # Get original frame dimensions
         h, w = frame.shape[:2]
         if w == 0 or h == 0:
@@ -320,64 +324,60 @@ class CPRAnalyzer:
         cv2.moveWindow(self.window_name, pos_x, pos_y)
         
         cv2.imshow(self.window_name, resized)
-        print(f"[DISPLAY] Resized to {new_w}x{new_h} (scale: {scale:.2f}) in {(time.time()-display_start)*1000:.1f}ms")
+        print(f"[DISPLAY FRAME] Resized to {new_w}x{new_h} (scale: {scale:.2f})")
 
-    def _calculate_rate_and_depth(self, chunk_start_frame_index, chunk_end_frame_index):
-        """Metric calcculation for a chunk of frames"""
-
-        print("\n[PHASE] Starting metric calculation")
-        start_time = time.time()
-        
+    def _calculate_rate_and_depth_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
         try:
-            print("[METRICS] Smoothing midpoint data...")
             self.metrics_calculator.smooth_midpoints(self.wrists_midpoint_analyzer.midpoint_history)
+            print("[METRICS] Smoothed midpoints")
             
-            print("[METRICS] Detecting compression peaks...")
             self.metrics_calculator.detect_peaks()
+            print("[METRICS] Detected peaks")
             
-            print("[METRICS] Calculating depth and rate...")
             depth, rate = self.metrics_calculator.calculate_metrics(
                 self.shoulders_analyzer.shoulder_distances,
                 self.cap.get(cv2.CAP_PROP_FPS),
-                chunk_start_frame_index, chunk_end_frame_index)
+                chunk_start_frame_index, 
+                chunk_end_frame_index)
+            print("[METRICS] Calculated metrics")
 
             if depth is None or rate is None:
-                print("[ERROR] Depth and rate calculation failed; not enough data")
-                return
-            
-            print(f"[RESULTS] Compression Depth: {depth:.1f} cm")
-            print(f"[RESULTS] Compression Rate: {rate:.1f} cpm")
+                print("[ERROR] Depth or rate calculation failed, likely due to insufficient data points (<2 peaks)")
             
         except Exception as e:
             print(f"[ERROR] Metric calculation failed: {str(e)}")
-        finally:
-            print(f"\n[ANALYSIS] Completed in {time.time()-start_time:.1f}s")
 
-    def _display_motion_plot(self, chunk_start_frame_index, chunk_end_frame_index):
-        """Plotting motion curve with original and smoothed data"""
-        self.metrics_calculator.plot_motion_curve(chunk_start_frame_index, chunk_end_frame_index)
-        print("[PLOT] Motion curve plotted")
+    def _plot_motion_curve_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
+        try:
+            self.metrics_calculator.plot_motion_curve(chunk_start_frame_index, chunk_end_frame_index)
+            print("[PLOT] Motion curve for chunk plotted")
+        except Exception as e:
+            print(f"[ERROR] Failed to plot motion curve for chunk: {str(e)}")
 
-    def _calculate_weighted_avg_rate_and_depth(self):
-        """Calculate weighted average rate and depth"""
-        avg_rate, avg_depth = self.metrics_calculator.calculate_weighted_averages()
-        
-        return avg_rate, avg_depth
-    
-    def _plot_full_motion_curve(self):
-        """Plot full motion curve"""
-        self.metrics_calculator.plot_motion_curve_for_all_chunks()
-        print("[PLOT] Full motion curve plotted")
+    def _calculate_rate_and_depth_for_all_chunks(self):
+        try:
+            self.metrics_calculator.calculate_weighted_averages()
+            print(f"[METRICS] Weighted averages calculated")
+        except Exception as e:
+            print(f"[ERROR] Failed to calculate weighted averages: {str(e)}")
+            
+    def _plot_full_motion_curve_for_all_chunks(self):
+        try:
+            self.metrics_calculator.plot_motion_curve_for_all_chunks()
+            print("[PLOT] Full motion curve plotted")
+        except Exception as e:
+            print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
     
 if __name__ == "__main__":
-    start_time = time.time()
-    print("[START] CPR Analysis started")
+    print(f"\n[MAIN] CPR Analysis Started")
 
     video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
 
+    initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
+    initialization_end_time = time.time()
+    initialization_elapsed_time = initialization_end_time - initialization_start_time
+    print(f"[TIMING] Initialization time: {initialization_elapsed_time:.2f}s")
+    
     analyzer.run_analysis()
-
-    end_time = time.time()
-    print(f"[END] Total execution time: {end_time - start_time:.2f}s")
 
