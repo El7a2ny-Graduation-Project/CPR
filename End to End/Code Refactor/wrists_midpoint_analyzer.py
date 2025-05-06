@@ -56,3 +56,7 @@ class WristsMidpointAnalyzer:
         except Exception as e:
             print(f"Midpoint drawing error: {e}")
             return frame
+    
+    def reset_midpoint_history(self):
+        """Reset midpoint history"""
+        self.midpoint_history = []

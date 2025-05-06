@@ -16,6 +16,11 @@ class MetricsCalculator:
         self.midpoints_list = np.array([])
         self.shoulder_distances = []
 
+        # Parameters for the final report
+        self.chunks_depth = []
+        self.chunks_rate = []
+        self.chunks_start_and_end_indices = []
+
     def smooth_midpoints(self, midpoints):
         """Apply Savitzky-Golay filter to smooth motion data"""
         self.midpoints_list = np.array(midpoints)
@@ -52,8 +57,18 @@ class MetricsCalculator:
             print(f"Peak detection error: {e}")
             return False
 
-    def calculate_metrics(self, shoulder_distances, fps):
+    def _validate_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
+            # Calculate expected number of frames and verify it matches data length
+            num_frames = chunk_end_frame_index - chunk_start_frame_index
+            assert len(self.midpoints_list[:, 1]) == num_frames, \
+                f"Data length {len(self.midpoints_list[:, 1])} doesn't match frame range {num_frames}"
+            assert len(self.y_smoothed) == num_frames, \
+                f"Smoothed data length {len(self.y_smoothed)} doesn't match frame range {num_frames}"
+
+    def calculate_metrics(self, shoulder_distances, fps, chunk_start_frame_index, chunk_end_frame_index):
         """Calculate compression metrics with improved calculations"""
+        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
+        
         self.shoulder_distances = shoulder_distances
         
         try:
@@ -77,35 +92,46 @@ class MetricsCalculator:
                 print("Max peaks detected")
                 rate = 1 / (np.mean(np.diff(self.peaks_max)) / fps) * 60  # Convert to CPM
 
+            # Store the results of this chunk for the final report
+            self.chunks_depth.append(depth)
+            self.chunks_rate.append(rate)
+            self.chunks_start_and_end_indices.append((chunk_start_frame_index, chunk_end_frame_index))
+
             return depth, rate
             
         except Exception as e:
             print(f"Metric calculation error: {e}")
             return None, None
 
-    def plot_motion_curve(self):
+    def plot_motion_curve(self, chunk_start_frame_index, chunk_end_frame_index):
         """Enhanced visualization with original and smoothed data"""
         if self.midpoints_list.size == 0:
             print("No midpoint data to plot")
             return
+        
+        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
+
+
+        # Create frame index array for x-axis
+        frame_indices = np.arange(chunk_start_frame_index, chunk_end_frame_index)
 
         plt.figure(figsize=(12, 6))
         
-        # Plot original and smoothed data
-        plt.plot(self.midpoints_list[:, 1], 
+        # Plot original and smoothed data with correct frame indices
+        plt.plot(frame_indices, self.midpoints_list[:, 1], 
                 label="Original Motion", 
                 color="red", 
                 linestyle="dashed", 
                 alpha=0.6)
                 
-        plt.plot(self.y_smoothed, 
+        plt.plot(frame_indices, self.y_smoothed, 
                 label="Smoothed Motion", 
                 color="blue", 
                 linewidth=2)
 
         # Plot peaks if detected
         if self.peaks.size > 0:
-            plt.plot(self.peaks, 
+            plt.plot(frame_indices[self.peaks], 
                     self.y_smoothed[self.peaks], 
                     "x", 
                     color="green", 

@@ -56,30 +56,75 @@ class CPRAnalyzer:
 
     def run_analysis(self):
         """Main processing loop with execution tracing"""
+        #^ Note that frames are 1 indexed in OpenCV, so we need to adjust accordingly
 
-        print("[PHASE] Starting main processing loop")
-        
-        while self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if not ret:
-                print("\n[INFO] End of video stream reached")
-                break
+        try:
+            print("[PHASE] Starting main processing loop")
 
-            frame = self._handle_frame_rotation(frame)
-            print(f"\n[FRAME {int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))}/{self.frame_count}] Processing")
-            
-            processed_frame = self._process_frame(frame)
+            chunk_start_frame_index = 1
+            frame_counter = 1
 
-            if processed_frame is not None:
-                self._display_frame(processed_frame)
-            else:
-                self._display_frame(frame)
-
-            if cv2.waitKey(1) == ord('q'):
-                print("\n[USER] Analysis interrupted by user")
-                break
+            while self.cap.isOpened():
+                #& Read frame
+                ret, frame = self.cap.read()
+                if not ret:
+                    print("\n[INFO] End of video stream reached")
+                    break
                 
-        self._finalize_analysis()
+                #& Rotate frame
+                frame = self._handle_frame_rotation(frame)
+                print(f"\n[FRAME {int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))}/{self.frame_count}] Processing")
+                
+                #& Process frame
+                processed_frame, is_complete_chunk = self._process_frame(frame)
+                
+                #& Display frame
+                if processed_frame is not None:
+                    self._display_frame(processed_frame)
+                else:
+                    self._display_frame(frame)
+                    print("##################################################################################################")
+                    print(f"Frame {frame_counter} skipped due to insufficient data")
+                    chunk_start_frame_index = frame_counter + 1
+
+                # Start: 0
+                # Posture Warning: 5
+                # Midpoints passed: (5-0) -1
+
+                # Start: 0
+                # End: 5
+                #Midpoints passed: (5-0)
+                
+                #& Check for chunk completion and if so calculate metrics
+                if is_complete_chunk or frame_counter == self.frame_count - 1:                  
+                    if is_complete_chunk:
+                        print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} inclusive to {frame_counter} exclusive")
+                        self._calculate_rate_and_depth(chunk_start_frame_index, frame_counter - 1)
+                        self._display_motion_plot(chunk_start_frame_index, frame_counter - 1)
+                    
+                        chunk_start_frame_index = frame_counter
+                    
+                        self.shoulders_analyzer.reset_shoulder_distances()
+                        self.wrists_midpoint_analyzer.reset_midpoint_history()
+                    
+                    if frame_counter == self.frame_count - 1:
+                        print("[CHUNK] Last chunk detected")
+                        print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} inclusive to {frame_counter} inclusive")
+                        self._calculate_rate_and_depth(chunk_start_frame_index, frame_counter)
+                        self._display_motion_plot(chunk_start_frame_index, frame_counter)
+                
+                frame_counter += 1
+                
+                #& Check for user interrupt (close window)
+                if cv2.waitKey(1) == ord('q'):
+                    print("\n[USER] Analysis interrupted by user")
+                    break
+        except Exception as e:
+            print(f"[ERROR] An error occurred during main execution loop: {str(e)}")
+        finally:
+            self.cap.release()
+            cv2.destroyAllWindows()
+            print("[CLEANUP] Resources released")            
 
     def _handle_frame_rotation(self, frame):
         """Handle frame rotation without adjusting chest point"""
@@ -90,6 +135,9 @@ class CPRAnalyzer:
     def _process_frame(self, frame):
         """Process frame with execution tracing"""
         processing_start = time.time()
+
+        #* Chunk Completion Check
+        is_complete_chunk = False
         
         #& Pose Estimation
         print(f"[POSE ESTIMATION] Starting...")
@@ -98,7 +146,7 @@ class CPRAnalyzer:
         
         if not pose_results:
             print("[POSE ESTIMATION] No poses detected in frame")
-            return frame
+            return frame, is_complete_chunk
             
         print(f"[POSE ESTIMATION] Detected {len(pose_results.boxes)} people")
 
@@ -124,7 +172,7 @@ class CPRAnalyzer:
         
         if not rescuer_processed_results or not patient_processed_results:
             print("[ROLE CLASSIFICATION] Insufficient data for analysis")
-            return None
+            return None, is_complete_chunk
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
@@ -146,7 +194,7 @@ class CPRAnalyzer:
 
         if not chest_params:
             print("[PROCESS] Insufficient data for analysis")
-            return None
+            return None, is_complete_chunk
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
@@ -180,7 +228,7 @@ class CPRAnalyzer:
             
             if not midpoint:
                 print("[PROCESS] Insufficient data for analysis")
-                return None
+                return None, is_complete_chunk
 
             print(f"[WRIST MIDPOINT ANALYSIS] Done")
 
@@ -233,9 +281,12 @@ class CPRAnalyzer:
                 print(f"[VISUALIZATION] Drawn midpoint")    
 
         print(f"[VISUALIZATION] Done") 
-        
+
+        if len(warnings) != 0:
+            is_complete_chunk = True
+    
         print(f"[PROCESS] Frame processed in {(time.time()-processing_start)*1000:.1f}ms")
-        return frame
+        return frame, is_complete_chunk
 
     def _display_frame(self, frame):
         """Adaptive window sizing with aspect ratio preservation"""
@@ -266,9 +317,10 @@ class CPRAnalyzer:
         cv2.imshow(self.window_name, resized)
         print(f"[DISPLAY] Resized to {new_w}x{new_h} (scale: {scale:.2f}) in {(time.time()-display_start)*1000:.1f}ms")
 
-    def _finalize_analysis(self):
-        """Final analysis with detailed reporting"""
-        print("\n[PHASE] Starting final analysis")
+    def _calculate_rate_and_depth(self, chunk_start_frame_index, chunk_end_frame_index):
+        """Metric calcculation for a chunk of frames"""
+
+        print("\n[PHASE] Starting metric calculation")
         start_time = time.time()
         
         try:
@@ -281,26 +333,25 @@ class CPRAnalyzer:
             print("[METRICS] Calculating depth and rate...")
             depth, rate = self.metrics_calculator.calculate_metrics(
                 self.shoulders_analyzer.shoulder_distances,
-                self.cap.get(cv2.CAP_PROP_FPS))
+                self.cap.get(cv2.CAP_PROP_FPS),
+                chunk_start_frame_index, chunk_end_frame_index)
 
             if depth is None or rate is None:
-                print("[ERROR] Depth and rate calculation failed")
+                print("[ERROR] Depth and rate calculation failed; not enough data")
                 return
             
             print(f"[RESULTS] Compression Depth: {depth:.1f} cm")
             print(f"[RESULTS] Compression Rate: {rate:.1f} cpm")
             
-            print("[VISUAL] Generating motion curve plot...")
-            self.metrics_calculator.plot_motion_curve()
-            
         except Exception as e:
             print(f"[ERROR] Metric calculation failed: {str(e)}")
-            
         finally:
-            self.cap.release()
-            cv2.destroyAllWindows()
             print(f"\n[ANALYSIS] Completed in {time.time()-start_time:.1f}s")
-            print("[CLEANUP] Resources released")
+
+    def _display_motion_plot(self, chunk_start_frame_index, chunk_end_frame_index):
+        """Plotting motion curve with original and smoothed data"""
+        self.metrics_calculator.plot_motion_curve(chunk_start_frame_index, chunk_end_frame_index)
+        print("[PLOT] Motion curve plotted")
 
 if __name__ == "__main__":
     start_time = time.time()

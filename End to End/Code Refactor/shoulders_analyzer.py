@@ -24,3 +24,7 @@ class ShouldersAnalyzer:
         except Exception as e:
             print(f"Shoulder distance error: {e}")
             return
+    
+    def reset_shoulder_distances(self):
+        """Reset shoulder distances"""
+        self.shoulder_distances = []
