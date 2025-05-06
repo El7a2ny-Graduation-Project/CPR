@@ -38,7 +38,7 @@ class CPRAnalyzer:
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
         self.role_classifier = RoleClassifier()
         self.chest_initializer = ChestInitializer()
-        self.metrics_calculator = MetricsCalculator(shoulder_width_cm=45)
+        self.metrics_calculator = MetricsCalculator(self.frame_count, shoulder_width_cm=45)
         self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=250, left_arm_angle_threshold=150)
         self.wrists_midpoint_analyzer = WristsMidpointAnalyzer()
         self.shoulders_analyzer = ShouldersAnalyzer()
@@ -108,8 +108,8 @@ class CPRAnalyzer:
                     print(f"[CHUNK] Complete chunk detected from frame {chunk_start_frame_index} to {chunk_end_frame_index}")
                     
                     self._calculate_rate_and_depth(chunk_start_frame_index, chunk_end_frame_index)
-                    self._display_motion_plot(chunk_start_frame_index, chunk_end_frame_index)
-                
+                    # self._display_motion_plot(chunk_start_frame_index, chunk_end_frame_index)
+                    #                 
                     waiting_to_start_new_chunk = True
                 
                     self.shoulders_analyzer.reset_shoulder_distances()
@@ -125,6 +125,11 @@ class CPRAnalyzer:
             self.cap.release()
             cv2.destroyAllWindows()
             print("[CLEANUP] Resources released")            
+
+            print("[REPORT] Calculating final metrics")
+            self._calculate_weighted_avg_rate_and_depth()
+            self._plot_full_motion_curve()
+            print("[REPORT] Final metrics calculated")
 
     def _handle_frame_rotation(self, frame):
         """Handle frame rotation without adjusting chest point"""
@@ -353,6 +358,17 @@ class CPRAnalyzer:
         self.metrics_calculator.plot_motion_curve(chunk_start_frame_index, chunk_end_frame_index)
         print("[PLOT] Motion curve plotted")
 
+    def _calculate_weighted_avg_rate_and_depth(self):
+        """Calculate weighted average rate and depth"""
+        avg_rate, avg_depth = self.metrics_calculator.calculate_weighted_averages()
+        
+        return avg_rate, avg_depth
+    
+    def _plot_full_motion_curve(self):
+        """Plot full motion curve"""
+        self.metrics_calculator.plot_motion_curve_for_all_chunks()
+        print("[PLOT] Full motion curve plotted")
+    
 if __name__ == "__main__":
     start_time = time.time()
     print("[START] CPR Analysis started")

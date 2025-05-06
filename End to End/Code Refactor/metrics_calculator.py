@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
     
-    def __init__(self, shoulder_width_cm=45):
+    def __init__(self, frame_count, shoulder_width_cm=45):
         self.shoulder_width_cm = shoulder_width_cm
         self.peaks = np.array([])
         self.peaks_max = np.array([])
@@ -20,6 +20,12 @@ class MetricsCalculator:
         self.chunks_depth = []
         self.chunks_rate = []
         self.chunks_start_and_end_indices = []
+
+        self.chunks_midpoints = []
+        self.chunks_smoothed = []
+        self.chunks_peaks = []
+
+        self.frame_count = frame_count
 
     def smooth_midpoints(self, midpoints):
         """Apply Savitzky-Golay filter to smooth motion data"""
@@ -92,10 +98,15 @@ class MetricsCalculator:
                 print("Max peaks detected")
                 rate = 1 / (np.mean(np.diff(self.peaks_max)) / fps) * 60  # Convert to CPM
 
-            # Store the results of this chunk for the final report
-            self.chunks_depth.append(depth)
-            self.chunks_rate.append(rate)
-            self.chunks_start_and_end_indices.append((chunk_start_frame_index, chunk_end_frame_index))
+            # Store the results of this chunk for the final report if they are not None
+            if depth is not None and rate is not None:
+                self.chunks_depth.append(depth)
+                self.chunks_rate.append(rate)
+                self.chunks_start_and_end_indices.append((chunk_start_frame_index, chunk_end_frame_index))
+
+                self.chunks_midpoints.append(self.midpoints_list.copy())
+                self.chunks_smoothed.append(self.y_smoothed.copy())
+                self.chunks_peaks.append(self.peaks.copy())
 
             return depth, rate
             
@@ -145,4 +156,212 @@ class MetricsCalculator:
         plt.title("Compression Motion Analysis")
         plt.grid(True)
         plt.legend()
+        plt.show()
+    
+    def calculate_weighted_averages(self):
+        """Calculate weighted averages based on chunk durations
+        """
+        if not self.chunks_depth or not self.chunks_rate or not self.chunks_start_and_end_indices:
+            print("[WARNING] No chunk data available for averaging")
+            return None
+            
+        if not (len(self.chunks_depth) == len(self.chunks_rate) == len(self.chunks_start_and_end_indices)):
+            print("[ERROR] Mismatched chunk data lists")
+            return None
+
+        total_weight = 0
+        weighted_depth_sum = 0
+        weighted_rate_sum = 0
+
+        for depth, rate, (start, end) in zip(self.chunks_depth, 
+                                        self.chunks_rate,
+                                        self.chunks_start_and_end_indices):
+            # Calculate chunk duration (+1 because inclusive)
+            chunk_duration = end - start + 1
+            
+            weighted_depth_sum += depth * chunk_duration
+            weighted_rate_sum += rate * chunk_duration
+            total_weight += chunk_duration
+
+        if total_weight == 0:
+            print("[ERROR] Total chunk durations is zero")
+            return None
+
+        weighted_depth = weighted_depth_sum / total_weight
+        weighted_rate = weighted_rate_sum / total_weight
+
+        print(f"[RESULTS] Weighted average depth: {weighted_depth:.1f} cm")
+        print(f"[RESULTS] Weighted average rate: {weighted_rate:.1f} cpm")
+        
+        return weighted_depth, weighted_rate
+    
+    # def plot_motion_curve_for_all_chunks(self):
+    #     """Plot combined analysis across all chunks with posture error regions"""
+    #     if not self.chunks_start_and_end_indices:
+    #         print("No chunk data available for plotting")
+    #         return
+
+    #     plt.figure(figsize=(14, 8))
+    #     ax = plt.gca()
+        
+    #     # Sort chunks chronologically
+    #     sorted_chunks = sorted(self.chunks_start_and_end_indices, key=lambda x: x[0])
+        
+    #     # 1. Plot all valid chunks
+    #     for idx, (start, end) in enumerate(sorted_chunks):
+    #         chunk_frames = np.arange(start, end + 1)
+    #         midpoints = self.chunks_midpoints[idx]
+    #         smoothed = self.chunks_smoothed[idx]
+    #         peaks = self.chunks_peaks[idx]
+            
+    #         # Plot original and smoothed data
+    #         ax.plot(chunk_frames, midpoints[:, 1], 
+    #             color="red", linestyle="dashed", alpha=0.6,
+    #             label="Original Motion" if idx == 0 else "")
+    #         ax.plot(chunk_frames, smoothed,
+    #             color="blue", linewidth=2,
+    #             label="Smoothed Motion" if idx == 0 else "")
+            
+    #         # Plot peaks
+    #         if peaks.size > 0:
+    #             ax.plot(chunk_frames[peaks], smoothed[peaks],
+    #                 "x", color="green", markersize=8,
+    #                 label="Peaks" if idx == 0 else "")
+
+    #     # 2. Identify posture error regions
+    #     error_regions = []
+        
+    #     # Check space before first chunk
+    #     if sorted_chunks[0][0] > 0:
+    #         error_regions.append((0, sorted_chunks[0][0]-1))
+        
+    #     # Check gaps between chunks
+    #     for i in range(1, len(sorted_chunks)):
+    #         prev_end = sorted_chunks[i-1][1]
+    #         curr_start = sorted_chunks[i][0]
+    #         if curr_start - prev_end > 1:
+    #             error_regions.append((prev_end + 1, curr_start - 1))
+
+    #     # 3. Shade error regions
+    #     for region in error_regions:
+    #         ax.axvspan(region[0], region[1], 
+    #                 color='gray', alpha=0.2, 
+    #                 label='Posture Errors' if region == error_regions[0] else "")
+
+    #     # 4. Configure legend
+    #     handles, labels = ax.get_legend_handles_labels()
+    #     unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+    #     ax.legend(*zip(*unique))
+
+    #     plt.xlabel("Frame Number")
+    #     plt.ylabel("Vertical Position (px)")
+    #     plt.title("Combined Motion Analysis with Posture Error Regions")
+    #     plt.grid(True)
+    #     plt.show()
+
+    def plot_motion_curve_for_all_chunks(self):
+        """Plot combined analysis with metrics annotations and posture error labels"""
+        if not self.chunks_start_and_end_indices:
+            print("No chunk data available for plotting")
+            return
+
+        plt.figure(figsize=(16, 8))
+        ax = plt.gca()
+        
+        # Sort chunks chronologically
+        sorted_chunks = sorted(zip(self.chunks_start_and_end_indices, 
+                        self.chunks_depth, 
+                        self.chunks_rate),
+                        key=lambda x: x[0][0])
+        
+        # 1. Plot all valid chunks with metrics
+        for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
+            chunk_frames = np.arange(start, end + 1)
+            midpoints = self.chunks_midpoints[idx]
+            smoothed = self.chunks_smoothed[idx]
+            peaks = self.chunks_peaks[idx]
+            
+            # Plot data
+            ax.plot(chunk_frames, midpoints[:, 1], 
+                color="red", linestyle="dashed", alpha=0.6,
+                label="Original Motion" if idx == 0 else "")
+            ax.plot(chunk_frames, smoothed,
+                color="blue", linewidth=2,
+                label="Smoothed Motion" if idx == 0 else "")
+            
+            # Plot peaks
+            if peaks.size > 0:
+                ax.plot(chunk_frames[peaks], smoothed[peaks],
+                    "x", color="green", markersize=8,
+                    label="Peaks" if idx == 0 else "")
+
+            # Annotate chunk metrics
+            mid_frame = (start + end) // 2
+            ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
+                    xy=(mid_frame, np.max(smoothed)),
+                    xytext=(0, 10), textcoords='offset points',
+                    ha='center', va='bottom', fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
+
+        # 2. Identify and label posture error regions
+        error_regions = []
+        
+        # Before first chunk
+        if sorted_chunks[0][0][0] > 0:
+            error_regions.append((0, sorted_chunks[0][0][0]-1))
+        
+        # Between chunks
+        for i in range(1, len(sorted_chunks)):
+            prev_end = sorted_chunks[i-1][0][1]
+            curr_start = sorted_chunks[i][0][0]
+            if curr_start - prev_end > 1:
+                error_regions.append((prev_end + 1, curr_start - 1))
+        
+        # After last chunk
+        last_end = sorted_chunks[-1][0][1]
+        if last_end < self.frame_count - 1:
+            error_regions.append((last_end + 1, self.frame_count - 1))
+
+        # Shade and label error regions
+        for region in error_regions:
+            ax.axvspan(region[0], region[1], 
+                    color='gray', alpha=0.2,
+                    label='Posture Errors' if region == error_regions[0] else "")
+            
+            # Add vertical dotted lines at boundaries
+            ax.axvline(x=region[0], color='black', linestyle=':', alpha=0.5)
+            ax.axvline(x=region[1], color='black', linestyle=':', alpha=0.5)
+            
+            # Add frame number labels - properly aligned
+            y_pos = ax.get_ylim()[0] + 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0])
+            
+            # Start frame label - right aligned before the line
+            ax.text(region[0] - 1, y_pos, 
+                f"Frame {region[0]}",
+                rotation=90, va='bottom', ha='right',
+                fontsize=8, alpha=0.7)
+            
+            # End frame label - left aligned after the line
+            ax.text(region[1] + 1, y_pos,
+                f"Frame {region[1]}",
+                rotation=90, va='bottom', ha='left',
+                fontsize=8, alpha=0.7)
+
+        # 3. Add weighted averages
+        if hasattr(self, 'weighted_depth') and hasattr(self, 'weighted_rate'):
+            ax.annotate(f"Weighted Averages:\nDepth: {self.weighted_depth:.1f}cm\nRate: {self.weighted_rate:.1f}cpm",
+                    xy=(0.98, 0.98), xycoords='axes fraction',
+                    ha='right', va='top', fontsize=10,
+                    bbox=dict(boxstyle='round,pad=0.5', fc='white', ec='black'))
+
+        # 4. Configure legend and layout
+        handles, labels = ax.get_legend_handles_labels()
+        unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+        ax.legend(*zip(*unique), loc='upper right')
+
+        plt.xlabel("Frame Number")
+        plt.ylabel("Vertical Position (px)")
+        plt.title("Complete CPR Analysis with Metrics")
+        plt.grid(True)
+        plt.tight_layout()
         plt.show()
