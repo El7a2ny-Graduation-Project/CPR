@@ -56,8 +56,10 @@ class MetricsCalculator:
             return False
             
         try:
-            self.peaks_max, _ = find_peaks(self.y_smoothed, distance=10)
-            self.peaks_min, _ = find_peaks(-self.y_smoothed, distance=10)
+            distance = min(10, len(self.y_smoothed))  # Dynamic distance based on data length
+
+            self.peaks_max, _ = find_peaks(self.y_smoothed, distance)
+            self.peaks_min, _ = find_peaks(-self.y_smoothed, distance)
             self.peaks = np.sort(np.concatenate((self.peaks_max, self.peaks_min)))
             return len(self.peaks) > 0
         except Exception as e:
@@ -103,6 +105,11 @@ class MetricsCalculator:
         self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
                 
         self.shoulder_distances = shoulder_distances
+
+        print(f"Peaks detected: {len(self.peaks)}")
+        print(f"Max peaks detected: {len(self.peaks_max)}")
+        print(f"Min peaks detected: {len(self.peaks_min)}")
+        print(f"Midpoints detected: {len(self.midpoints_list)}")
         
         try:
             # Calculate pixel to cm ratio

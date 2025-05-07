@@ -60,6 +60,10 @@ class CPRAnalyzer:
         self.prev_pose_results = None
         print("[INIT] Previous results initialized")
 
+        #& Workaround for minor glitches
+        self.consecutive_frames_with_posture_errors = 0
+        self.max_consecutive_frames_with_posture_errors = 5
+
     def run_analysis(self):
         try:
             print("\n[RUN ANALYSIS] Starting analysis")
@@ -217,7 +221,7 @@ class CPRAnalyzer:
     
         #& Chest Estimation
         chest_params = self.chest_initializer.estimate_chest_region(patient_processed_results["keypoints"], patient_processed_results["bounding_box"], frame_width=frame.shape[1], frame_height=frame.shape[0])
-
+       
         #~ Handle Failed Estimation or Update Previous Results
         if not chest_params:
             chest_params = self.prev_chest_params
@@ -231,17 +235,38 @@ class CPRAnalyzer:
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
-        print(f"[CHEST ESTIMATION] Updated chest initializer with new results")
+        self.chest_initializer.chest_params_history.append(self.chest_initializer.chest_params)
 
-        #& Posture Analysis (Phase 1: No Midpoint)
-        warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"])
+        #& Chest Expectation
+        # The estimation up to the last frame
+        expected_chest_params = self.chest_initializer.estimate_chest_region_weighted_avg(frame_width=frame.shape[1], frame_height=frame.shape[0])
+
+        #~ First "window_size" detections can't avg
+        if not expected_chest_params:
+            self.chest_initializer.expected_chest_params = self.chest_initializer.chest_params
+        else:
+            self.chest_initializer.expected_chest_params = expected_chest_params
+
+        #& Posture Analysis
+        # The midpoind of the last frame
+        warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"], self.prev_midpoint, self.chest_initializer.expected_chest_params)
 
         if warnings:
-            print(f"[POSTURE ANALYSIS 1] Posture issues: {', '.join(warnings)}")
+            print(f"[POSTURE ANALYSIS] Posture issues: {', '.join(warnings)}")
+            self.consecutive_frames_with_posture_errors += 1
         else:
-            print("[POSTURE ANALYSIS 1] No posture issues detected")
+            print("[POSTURE ANALYSIS] No posture issues detected")
+        
+        accept_frame = self.consecutive_frames_with_posture_errors < self.max_consecutive_frames_with_posture_errors
 
-        if len(warnings) == 0:
+        if accept_frame:
+            warnings = []  # Reset warnings if the frame is accepted
+
+        #^ Set Params in Posture Analyzer (to draw later)
+        self.posture_analyzer.warnings = warnings  
+        print(f"[POSTURE ANALYSIS] Updated posture analyzer with new results")
+
+        if accept_frame:
             #& Wrist Midpoint Detection
             midpoint = self.wrists_midpoint_analyzer.detect_wrists_midpoint(rescuer_processed_results["keypoints"])
 
@@ -256,19 +281,6 @@ class CPRAnalyzer:
                 print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
                 return None, is_complete_chunk
 
-            #& Posture Analysis (Phase 2: With Midpoint)
-            warnings = self.posture_analyzer.check_hands_on_chest(midpoint, chest_params)    
-
-            if warnings:
-                print(f"[POSTURE ANALYSIS 2] Posture issues: {', '.join(warnings)}")
-            else:
-                print("[POSTURE ANALYSIS 2] No posture issues detected")
-
-        #^ Set Params in Posture Analyzer (to draw later)
-        self.posture_analyzer.warnings = warnings  
-        print(f"[POSTURE ANALYSIS] Updated posture analyzer with new results")
-
-        if len(warnings) == 0:
             #^ Set Params in Role Classifier (to draw later)
             self.wrists_midpoint_analyzer.midpoint = midpoint
             self.wrists_midpoint_analyzer.midpoint_history.append(midpoint)
@@ -280,13 +292,16 @@ class CPRAnalyzer:
 
         #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
         # Bounding boxes and keypoints
-        if frame is not None:
-            frame = self.role_classifier.draw_rescuer_and_patient(frame)
-            print(f"[VISUALIZATION] Drawn bounding boxes and keypoints")
+        #! Better Visability
+        # if frame is not None:
+        #     frame = self.role_classifier.draw_rescuer_and_patient(frame)
+        #     print(f"[VISUALIZATION] Drawn bounding boxes and keypoints")
       
         # Chest Region
         if frame is not None:
-            frame = self.chest_initializer.draw_chest_region(frame)
+            #!!
+            # frame = self.chest_initializer.draw_chest_region(frame)
+            frame = self.chest_initializer.draw_expected_chest_region(frame)
             print(f"[VISUALIZATION] Drawn chest region")
 
         # Warning Messages
@@ -295,14 +310,15 @@ class CPRAnalyzer:
             print(f"[VISUALIZATION] Drawn warnings")
         
         if frame is not None:
-            if len(warnings) == 0:
+            if accept_frame:
                 # Midpoint
                 frame = self.wrists_midpoint_analyzer.draw_midpoint(frame)   
-                print(f"[VISUALIZATION] Drawn midpoint")    
+                print(f"[VISUALIZATION] Drawn midpoint")   
 
         #* Chunk Completion Check
-        if len(warnings) != 0:
+        if not accept_frame:
             is_complete_chunk = True
+            self.consecutive_frames_with_posture_errors = 0
     
         return frame, is_complete_chunk
 
@@ -377,8 +393,8 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
-    # video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
+    # video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_4.mp4"
 
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
