@@ -57,6 +57,7 @@ class CPRAnalyzer:
         self.prev_patient_processed_results = None
         self.prev_chest_params = None
         self.prev_midpoint = None
+        self.prev_pose_results = None
         print("[INIT] Previous results initialized")
 
     def run_analysis(self):
@@ -98,10 +99,9 @@ class CPRAnalyzer:
                     # This is why the first chunk starts from the first frame that has been processed successfully.
                     if first_time_to_have_a_proccessed_frame:
                         first_time_to_have_a_proccessed_frame = False
-                        #! What happens when I use frame_counter instead of self.cap.get(cv2.CAP_PROP_POS_FRAMES)?
-                        chunk_start_frame_index = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                        chunk_start_frame_index = frame_counter
                         print(f"[RUN ANALYSIS] First processed frame detected")
-                    
+
                     self._display_frame(processed_frame)
                 else:
                     self._display_frame(frame)
@@ -178,11 +178,17 @@ class CPRAnalyzer:
         
         #& Pose Estimation
         pose_results = self.pose_estimator.detect_poses(frame)
+
+        #~ Handle Failed Detection or Update Previous Results
+        if not pose_results:
+            pose_results = self.prev_pose_results
+            print("[POSE ESTIMATION] No pose detected, using previous results (could be None)")
+        else:
+            self.prev_pose_results = pose_results
         
         if not pose_results:
-            print("[POSE ESTIMATION] No poses detected")
-            return frame, is_complete_chunk
-        print(f"[POSE ESTIMATION] Detected {len(pose_results.boxes)} people")
+            print("[POSE ESTIMATION] Insufficient data for processing")
+            return None, is_complete_chunk
         
         #& Rescuer and Patient Classification
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
@@ -371,7 +377,8 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
+    # video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
 
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
@@ -380,4 +387,3 @@ if __name__ == "__main__":
     print(f"[TIMING] Initialization time: {initialization_elapsed_time:.2f}s")
     
     analyzer.run_analysis()
-

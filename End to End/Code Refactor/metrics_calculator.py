@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.signal import savgol_filter, find_peaks
 import matplotlib.pyplot as plt
+import sys
 
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
@@ -64,17 +65,43 @@ class MetricsCalculator:
             return False
 
     def _validate_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
-            # Calculate expected number of frames and verify it matches data length
+        """Validate that the data length matches the expected frame range.
+        Terminates the program with error code 1 if validation fails.
+        
+        Args:
+            chunk_start_frame_index: Start frame index of the chunk
+            chunk_end_frame_index: End frame index of the chunk
+            
+        Exits:
+            If validation fails, prints error message and exits with code 1
+        """
+        try:
+            # Calculate expected number of frames
             num_frames = chunk_end_frame_index - chunk_start_frame_index + 1
-            assert len(self.midpoints_list[:, 1]) == num_frames, \
-                f"Data length {len(self.midpoints_list[:, 1])} doesn't match frame range {num_frames}"
-            assert len(self.y_smoothed) == num_frames, \
-                f"Smoothed data length {len(self.y_smoothed)} doesn't match frame range {num_frames}"
+            
+            # Validate midpoints data
+            if len(self.midpoints_list[:, 1]) != num_frames:
+                print(f"\nERROR: Data length mismatch in midpoints_list")
+                print(f"Expected: {num_frames} frames ({chunk_start_frame_index}-{chunk_end_frame_index})")
+                print(f"Actual: {len(self.midpoints_list[:, 1])} frames")
+                sys.exit(1)
+                
+            # Validate smoothed data
+            if len(self.y_smoothed) != num_frames:
+                print(f"\nERROR: Data length mismatch in y_smoothed")
+                print(f"Expected: {num_frames} frames ({chunk_start_frame_index}-{chunk_end_frame_index})")
+                print(f"Actual: {len(self.y_smoothed)} frames")
+                sys.exit(1)
+                
+        except Exception as e:
+            print(f"\nCRITICAL VALIDATION ERROR: {str(e)}")
+            sys.exit(1)
 
     def calculate_metrics(self, shoulder_distances, fps, chunk_start_frame_index, chunk_end_frame_index):
-        """Calculate compression metrics with improved calculations"""
-        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
+        """Calculate compression metrics with improved calculations"""        
         
+        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
+                
         self.shoulder_distances = shoulder_distances
         
         try:
@@ -255,6 +282,126 @@ class MetricsCalculator:
         last_end = sorted_chunks[-1][0][1]
         if last_end < self.frame_count - 1:
             error_regions.append((last_end + 1, self.frame_count - 1))
+
+        # Shade and label error regions
+        for region in error_regions:
+            ax.axvspan(region[0], region[1], 
+                    color='gray', alpha=0.2,
+                    label='Posture Errors' if region == error_regions[0] else "")
+            
+            # Add vertical dotted lines at boundaries
+            ax.axvline(x=region[0], color='black', linestyle=':', alpha=0.5)
+            ax.axvline(x=region[1], color='black', linestyle=':', alpha=0.5)
+            
+            # Add frame number labels - properly aligned
+            y_pos = ax.get_ylim()[0] + 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0])
+            
+            # Start frame label - right aligned before the line
+            ax.text(region[0] - 1, y_pos, 
+                f"Frame {region[0]}",
+                rotation=90, va='bottom', ha='right',
+                fontsize=8, alpha=0.7)
+            
+            # End frame label - left aligned after the line
+            ax.text(region[1] + 1, y_pos,
+                f"Frame {region[1]}",
+                rotation=90, va='bottom', ha='left',
+                fontsize=8, alpha=0.7)
+
+        # 3. Add weighted averages
+        if hasattr(self, 'weighted_depth') and hasattr(self, 'weighted_rate'):
+            ax.annotate(f"Weighted Averages:\nDepth: {self.weighted_depth:.1f}cm\nRate: {self.weighted_rate:.1f}cpm",
+                    xy=(0.98, 0.98), xycoords='axes fraction',
+                    ha='right', va='top', fontsize=10,
+                    bbox=dict(boxstyle='round,pad=0.5', fc='white', ec='black'))
+
+        # 4. Configure legend and layout
+        handles, labels = ax.get_legend_handles_labels()
+        unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+        ax.legend(*zip(*unique), loc='upper right')
+
+        plt.xlabel("Frame Number")
+        plt.ylabel("Vertical Position (px)")
+        plt.title("Complete CPR Analysis with Metrics")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_motion_curve_for_all_chunks(self):
+        """Plot combined analysis with metrics annotations and posture error labels"""
+        if not self.chunks_start_and_end_indices:
+            print("No chunk data available for plotting")
+            return
+
+        # Print chunk information before plotting
+        print("\n=== Chunk Ranges ===")
+        for i, (start_end, depth, rate) in enumerate(zip(self.chunks_start_and_end_indices, 
+                                                    self.chunks_depth, 
+                                                    self.chunks_rate)):
+            print(f"Chunk {i+1}: Frames {start_end[0]}-{start_end[1]} | "
+                f"Depth: {depth:.1f}cm | Rate: {rate:.1f}cpm")
+
+        plt.figure(figsize=(16, 8))
+        ax = plt.gca()
+        
+        # Sort chunks chronologically
+        sorted_chunks = sorted(zip(self.chunks_start_and_end_indices, 
+                        self.chunks_depth, 
+                        self.chunks_rate),
+                        key=lambda x: x[0][0])
+        
+        # 1. Plot all valid chunks with metrics
+        for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
+            chunk_frames = np.arange(start, end + 1)
+            midpoints = self.chunks_midpoints[idx]
+            smoothed = self.chunks_smoothed[idx]
+            peaks = self.chunks_peaks[idx]
+            
+            # Plot data
+            ax.plot(chunk_frames, midpoints[:, 1], 
+                color="red", linestyle="dashed", alpha=0.6,
+                label="Original Motion" if idx == 0 else "")
+            ax.plot(chunk_frames, smoothed,
+                color="blue", linewidth=2,
+                label="Smoothed Motion" if idx == 0 else "")
+            
+            # Plot peaks
+            if peaks.size > 0:
+                ax.plot(chunk_frames[peaks], smoothed[peaks],
+                    "x", color="green", markersize=8,
+                    label="Peaks" if idx == 0 else "")
+
+            # Annotate chunk metrics
+            mid_frame = (start + end) // 2
+            ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
+                    xy=(mid_frame, np.max(smoothed)),
+                    xytext=(0, 10), textcoords='offset points',
+                    ha='center', va='bottom', fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
+
+        # 2. Identify and label posture error regions
+        error_regions = []
+        
+        # Before first chunk
+        if sorted_chunks[0][0][0] > 0:
+            error_regions.append((0, sorted_chunks[0][0][0]-1))
+        
+        # Between chunks
+        for i in range(1, len(sorted_chunks)):
+            prev_end = sorted_chunks[i-1][0][1]
+            curr_start = sorted_chunks[i][0][0]
+            if curr_start - prev_end > 1:
+                error_regions.append((prev_end + 1, curr_start - 1))
+        
+        # After last chunk
+        last_end = sorted_chunks[-1][0][1]
+        if last_end < self.frame_count - 1:
+            error_regions.append((last_end + 1, self.frame_count - 1))
+
+        # Print error regions information
+        print("\n=== Error Regions ===")
+        for i, (start, end) in enumerate(error_regions):
+            print(f"Error Region {i+1}: Frames {start}-{end}")
 
         # Shade and label error regions
         for region in error_regions:

@@ -30,7 +30,7 @@ class ChestInitializer:
 
             # Chest dimensions (85% of shoulder width, 40% height)
             chest_dx = bbox_delta_y * 0.8
-            chest_dy = bbox_delta_y * 0.8
+            chest_dy = bbox_delta_y * 1.5
 
             # Calculate region coordinates
             x1 = chest_center[0] - chest_dx / 2
