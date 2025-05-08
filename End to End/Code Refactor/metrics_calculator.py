@@ -338,7 +338,7 @@ class MetricsCalculator:
         plt.tight_layout()
         plt.show()
 
-    def plot_motion_curve_for_all_chunks(self):
+    def plot_motion_curve_for_all_chunks(self, posture_errors_for_all_error_region):
         """Plot combined analysis with metrics annotations and posture error labels"""
         if not self.chunks_start_and_end_indices:
             print("No chunk data available for plotting")
@@ -412,10 +412,17 @@ class MetricsCalculator:
         # Print error regions information
         print("\n=== Error Regions ===")
         for i, (start, end) in enumerate(error_regions):
-            print(f"Error Region {i+1}: Frames {start}-{end}")
+            # Get errors for this region if available
+            try:
+                errors = posture_errors_for_all_error_region[i]
+                error_str = ", ".join(errors) if errors else "No errors detected"
+            except IndexError:
+                error_str = "No error data"
+                
+            print(f"Error Region {i+1}: Frames {start}-{end} | Errors: {error_str}")
 
         # Shade and label error regions
-        for region in error_regions:
+        for error_region_index, region in enumerate (error_regions):
             ax.axvspan(region[0], region[1], 
                     color='gray', alpha=0.2,
                     label='Posture Errors' if region == error_regions[0] else "")
@@ -438,6 +445,26 @@ class MetricsCalculator:
                 f"Frame {region[1]}",
                 rotation=90, va='bottom', ha='left',
                 fontsize=8, alpha=0.7)
+            
+            # Add error labels if available
+            if posture_errors_for_all_error_region:
+                try:
+                    # Get errors for this specific error region
+                    region_errors = posture_errors_for_all_error_region[error_region_index]
+                    
+                    # Format errors text
+                    error_text = "Errors:\n" + "\n".join(region_errors) if region_errors else ""
+                    
+                    # Position text in middle of the error region
+                    mid_frame = (region[0] + region[1]) // 2
+                    ax.text(mid_frame, np.mean(ax.get_ylim()), 
+                        error_text,
+                        ha='center', va='center', 
+                        fontsize=9, color='red', alpha=0.8,
+                        bbox=dict(boxstyle='round,pad=0.3', 
+                                fc='white', ec='red', alpha=0.7))               
+                except IndexError:
+                    print(f"No error data for region {error_region_index}")
 
         # 3. Add weighted averages
         if hasattr(self, 'weighted_depth') and hasattr(self, 'weighted_rate'):

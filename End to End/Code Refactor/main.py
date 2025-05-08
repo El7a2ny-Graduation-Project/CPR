@@ -68,6 +68,9 @@ class CPRAnalyzer:
         self.consecutive_frames_with_posture_errors = 0
         self.max_consecutive_frames_with_posture_errors = 10
 
+        #& Initialize variables for reporting warnings
+        self.posture_errors_for_current_error_region = set()
+
     def run_analysis(self):
         try:
             print("\n[RUN ANALYSIS] Starting analysis")
@@ -143,6 +146,10 @@ class CPRAnalyzer:
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
+
+                    self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
+                    self.posture_errors_for_current_error_region.clear()
+                    print(f"[RUN ANALYSIS] Reset posture errors for current error region")
                                 
                 # Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):
@@ -300,6 +307,16 @@ class CPRAnalyzer:
         else:
             #* Chunk Completion Check
             is_complete_chunk = True
+            
+            num_warnings_before = len(self.posture_errors_for_current_error_region)
+
+            for warning in warnings:
+                self.posture_errors_for_current_error_region.add(warning)
+                
+                num_warnings_after = len(self.posture_errors_for_current_error_region)
+                
+                if num_warnings_after > num_warnings_before:
+                    print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}")
 
         #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
         # Bounding boxes and keypoints
@@ -391,7 +408,7 @@ class CPRAnalyzer:
             
     def _plot_full_motion_curve_for_all_chunks(self):
         try:
-            self.metrics_calculator.plot_motion_curve_for_all_chunks()
+            self.metrics_calculator.plot_motion_curve_for_all_chunks(self.posture_analyzer.posture_errors_for_all_error_region)
             print("[PLOT] Full motion curve plotted")
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
@@ -400,10 +417,12 @@ if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
     video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
     initialization_end_time = time.time()
     initialization_elapsed_time = initialization_end_time - initialization_start_time
+    
     print(f"[TIMING] Initialization time: {initialization_elapsed_time:.2f}s")
     
     analyzer.run_analysis()

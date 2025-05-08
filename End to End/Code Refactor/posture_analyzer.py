@@ -26,7 +26,8 @@ class PostureAnalyzer:
             'one_handed': (50, 100),
             'hands_not_on_chest': (50, 150)
         }
-        self.warnings = []
+
+        self.posture_errors_for_all_error_region = []
 
     def _calculate_angle(self, a, b, c):
         """Calculate angle between three points"""
