@@ -7,7 +7,7 @@ import sys
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
     
-    def __init__(self, frame_count, shoulder_width_cm=45):
+    def __init__(self, frame_count, shoulder_width_cm):
         self.shoulder_width_cm = shoulder_width_cm
         self.peaks = np.array([])
         self.peaks_max = np.array([])
@@ -50,7 +50,7 @@ class MetricsCalculator:
             return False
 
     def detect_peaks(self):
-        """Improved peak detection with separate max/min peaks"""
+        """Improved peak detection with adjusted prominence for min peaks"""
         if self.y_smoothed.size == 0:
             print("No smoothed values found for peak detection")
             return False
@@ -58,9 +58,18 @@ class MetricsCalculator:
         try:
             distance = min(10, len(self.y_smoothed))  # Dynamic distance based on data length
 
-            self.peaks_max, _ = find_peaks(self.y_smoothed, distance)
-            self.peaks_min, _ = find_peaks(-self.y_smoothed, distance)
+            # Detect max peaks with default prominence
+            self.peaks_max, _ = find_peaks(self.y_smoothed, distance=distance)
+            
+            # Detect min peaks with reduced or no prominence requirement
+            self.peaks_min, _ = find_peaks(
+                -self.y_smoothed, 
+                distance=distance, 
+                prominence=(0.3, None)  # Adjust based on your data's characteristics
+            )
+            
             self.peaks = np.sort(np.concatenate((self.peaks_max, self.peaks_min)))
+
             return len(self.peaks) > 0
         except Exception as e:
             print(f"Peak detection error: {e}")
@@ -106,11 +115,6 @@ class MetricsCalculator:
                 
         self.shoulder_distances = shoulder_distances
 
-        print(f"Peaks detected: {len(self.peaks)}")
-        print(f"Max peaks detected: {len(self.peaks_max)}")
-        print(f"Min peaks detected: {len(self.peaks_min)}")
-        print(f"Midpoints detected: {len(self.midpoints_list)}")
-        
         try:
             # Calculate pixel to cm ratio
             if len(self.shoulder_distances) > 0:

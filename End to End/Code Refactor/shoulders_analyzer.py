@@ -7,9 +7,10 @@ class ShouldersAnalyzer:
     """Analyzes shoulder distances and posture"""
     
     def __init__(self):
-        self.shoulder_distances = []
+        self.shoulder_distance = None
+        self.shoulder_distance_history = []
 
-    def append_new_shoulder_distance(self, rescuer_keypoints):
+    def calculate_shoulder_distance(self, rescuer_keypoints):
         """Calculate and store shoulder distance"""
         if rescuer_keypoints is None:
             return
@@ -19,12 +20,12 @@ class ShouldersAnalyzer:
             right = rescuer_keypoints[CocoKeypoints.RIGHT_SHOULDER.value]
             
             distance = np.linalg.norm(np.array(left) - np.array(right))
-            self.shoulder_distances.append(distance)
             
+            return distance
         except Exception as e:
             print(f"Shoulder distance error: {e}")
             return
     
     def reset_shoulder_distances(self):
         """Reset shoulder distances"""
-        self.shoulder_distances = []
+        self.shoulder_distance_history = []

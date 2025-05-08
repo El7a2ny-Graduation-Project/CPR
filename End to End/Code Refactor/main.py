@@ -41,8 +41,8 @@ class CPRAnalyzer:
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
         self.role_classifier = RoleClassifier()
         self.chest_initializer = ChestInitializer()
-        self.metrics_calculator = MetricsCalculator(self.frame_count, shoulder_width_cm=45)
-        self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=250, left_arm_angle_threshold=150)
+        self.metrics_calculator = MetricsCalculator(self.frame_count, shoulder_width_cm=45*0.65)
+        self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=210, left_arm_angle_threshold=150, wrist_distance_threshold=170, history_length_to_average=10)
         self.wrists_midpoint_analyzer = WristsMidpointAnalyzer()
         self.shoulders_analyzer = ShouldersAnalyzer()
         print("[INIT] System components initialized")
@@ -135,7 +135,7 @@ class CPRAnalyzer:
                     print(f"[RUN ANALYSIS] Calculated metrics for the chunk")
               
                     waiting_to_start_new_chunk = True
-                
+
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
@@ -256,6 +256,7 @@ class CPRAnalyzer:
             self.consecutive_frames_with_posture_errors += 1
         else:
             print("[POSTURE ANALYSIS] No posture issues detected")
+            self.consecutive_frames_with_posture_errors = 0
         
         accept_frame = self.consecutive_frames_with_posture_errors < self.max_consecutive_frames_with_posture_errors
 
@@ -287,7 +288,10 @@ class CPRAnalyzer:
             print(f"[WRIST MIDPOINT DETECTION] Updated wrist midpoint analyzer with new results")
 
             #& Shoulder Distance Calculation
-            self.shoulders_analyzer.append_new_shoulder_distance(rescuer_processed_results["keypoints"])
+            shoulder_distance = self.shoulders_analyzer.calculate_shoulder_distance(rescuer_processed_results["keypoints"])
+            if shoulder_distance is not None:
+                self.shoulders_analyzer.shoulder_distance = shoulder_distance
+                self.shoulders_analyzer.shoulder_distance_history.append(shoulder_distance)
             print(f"[SHOULDER DISTANCE] Updated shoulder distance analyzer with new results")
 
         #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
@@ -357,7 +361,7 @@ class CPRAnalyzer:
             print("[METRICS] Detected peaks")
             
             depth, rate = self.metrics_calculator.calculate_metrics(
-                self.shoulders_analyzer.shoulder_distances,
+                self.shoulders_analyzer.shoulder_distance_history,
                 self.cap.get(cv2.CAP_PROP_FPS),
                 chunk_start_frame_index, 
                 chunk_end_frame_index)
@@ -393,8 +397,8 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    # video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_4.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    # video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
 
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
