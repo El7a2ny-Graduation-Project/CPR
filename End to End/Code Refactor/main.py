@@ -319,17 +319,9 @@ class CPRAnalyzer:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}")
                     
 
-        #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
-        # Bounding boxes and keypoints
-        #! Better Visability
-        # if frame is not None:
-        #     frame = self.role_classifier.draw_rescuer_and_patient(frame)
-        #     print(f"[VISUALIZATION] Drawn bounding boxes and keypoints")
-      
+        #& Warnings, Wrists Midpoints, and Chest Region Drawing
         # Chest Region
         if frame is not None:
-            #!!
-            # frame = self.chest_initializer.draw_chest_region(frame)
             frame = self.chest_initializer.draw_expected_chest_region(frame)
             print(f"[VISUALIZATION] Drawn chest region")
 

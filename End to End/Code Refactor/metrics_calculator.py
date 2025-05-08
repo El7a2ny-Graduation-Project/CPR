@@ -125,14 +125,19 @@ class MetricsCalculator:
                 return None, None
 
             # Depth calculation using all peaks
-            depth = 0.0
+            depth = None
             if len(self.peaks) > 1:
                 depth = np.mean(np.abs(np.diff(self.y_smoothed[self.peaks]))) * self.cm_px_ratio
 
             # Rate calculation using only compression peaks (peaks_max)
-            rate = 0.0
+            rate = None
             if len(self.peaks_max) > 1:
                 rate = 1 / (np.mean(np.diff(self.peaks_max)) / fps) * 60  # Convert to CPM
+
+            if depth is None or rate is None:
+                depth = 0
+                rate = 0
+                self.peaks = np.array([])  # Reset peaks if no valid data
 
             # Store the results of this chunk for the final report if they are not None
             self.chunks_depth.append(depth)
