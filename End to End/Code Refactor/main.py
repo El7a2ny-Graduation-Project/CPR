@@ -289,6 +289,7 @@ class CPRAnalyzer:
 
             #& Shoulder Distance Calculation
             shoulder_distance = self.shoulders_analyzer.calculate_shoulder_distance(rescuer_processed_results["keypoints"])
+            
             if shoulder_distance is not None:
                 self.shoulders_analyzer.shoulder_distance = shoulder_distance
                 self.shoulders_analyzer.shoulder_distance_history.append(shoulder_distance)
@@ -398,7 +399,6 @@ if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
     video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
-    # video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
 
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
