@@ -42,7 +42,11 @@ class CPRAnalyzer:
         self.role_classifier = RoleClassifier()
         self.chest_initializer = ChestInitializer()
         self.metrics_calculator = MetricsCalculator(self.frame_count, shoulder_width_cm=45*0.65)
-        self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=210, left_arm_angle_threshold=150, wrist_distance_threshold=170, history_length_to_average=10)
+        
+        # if avg_right > self.right_arm_angle_threshold: error
+        # if avg_left < self.left_arm_angle_threshold: error
+
+        self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=220, left_arm_angle_threshold=160, wrist_distance_threshold=170, history_length_to_average=10)
         self.wrists_midpoint_analyzer = WristsMidpointAnalyzer()
         self.shoulders_analyzer = ShouldersAnalyzer()
         print("[INIT] System components initialized")
@@ -62,7 +66,7 @@ class CPRAnalyzer:
 
         #& Workaround for minor glitches
         self.consecutive_frames_with_posture_errors = 0
-        self.max_consecutive_frames_with_posture_errors = 5
+        self.max_consecutive_frames_with_posture_errors = 10
 
     def run_analysis(self):
         try:
@@ -267,21 +271,21 @@ class CPRAnalyzer:
         self.posture_analyzer.warnings = warnings  
         print(f"[POSTURE ANALYSIS] Updated posture analyzer with new results")
 
+        #& Wrist Midpoint Detection
+        midpoint = self.wrists_midpoint_analyzer.detect_wrists_midpoint(rescuer_processed_results["keypoints"])
+
+        #~ Handle Failed Detection or Update Previous Results
+        if not midpoint:
+            midpoint = self.prev_midpoint
+            print("[WRIST MIDPOINT DETECTION] No midpoint detected, using previous results (could be None)")
+        else:
+            self.prev_midpoint = midpoint
+        
+        if not midpoint:
+            print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
+            return None, is_complete_chunk
+
         if accept_frame:
-            #& Wrist Midpoint Detection
-            midpoint = self.wrists_midpoint_analyzer.detect_wrists_midpoint(rescuer_processed_results["keypoints"])
-
-            #~ Handle Failed Detection or Update Previous Results
-            if not midpoint:
-                midpoint = self.prev_midpoint
-                print("[WRIST MIDPOINT DETECTION] No midpoint detected, using previous results (could be None)")
-            else:
-                self.prev_midpoint = midpoint
-            
-            if not midpoint:
-                print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
-                return None, is_complete_chunk
-
             #^ Set Params in Role Classifier (to draw later)
             self.wrists_midpoint_analyzer.midpoint = midpoint
             self.wrists_midpoint_analyzer.midpoint_history.append(midpoint)
@@ -289,11 +293,13 @@ class CPRAnalyzer:
 
             #& Shoulder Distance Calculation
             shoulder_distance = self.shoulders_analyzer.calculate_shoulder_distance(rescuer_processed_results["keypoints"])
-            
             if shoulder_distance is not None:
                 self.shoulders_analyzer.shoulder_distance = shoulder_distance
                 self.shoulders_analyzer.shoulder_distance_history.append(shoulder_distance)
             print(f"[SHOULDER DISTANCE] Updated shoulder distance analyzer with new results")
+        else:
+            #* Chunk Completion Check
+            is_complete_chunk = True
 
         #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
         # Bounding boxes and keypoints
@@ -319,11 +325,6 @@ class CPRAnalyzer:
                 # Midpoint
                 frame = self.wrists_midpoint_analyzer.draw_midpoint(frame)   
                 print(f"[VISUALIZATION] Drawn midpoint")   
-
-        #* Chunk Completion Check
-        if not accept_frame:
-            is_complete_chunk = True
-            self.consecutive_frames_with_posture_errors = 0
     
         return frame, is_complete_chunk
 
@@ -399,7 +400,6 @@ if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
     video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
-
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
     initialization_end_time = time.time()
