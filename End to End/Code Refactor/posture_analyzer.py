@@ -22,9 +22,10 @@ class PostureAnalyzer:
         self.wrist_distance_threshold = wrist_distance_threshold
         
         self.warning_positions = {
-            'arm_angles': (50, 50),
-            'one_handed': (50, 100),
-            'hands_not_on_chest': (50, 150)
+            'right_arm_angle': (50, 50),
+            'left_arm_angle': (50, 100),
+            'one_handed': (50, 150),
+            'hands_not_on_chest': (50, 200)
         }
 
         self.posture_errors_for_all_error_region = []
@@ -38,36 +39,52 @@ class PostureAnalyzer:
         except Exception as e:
             print(f"Angle calculation error: {e}")
             return 0
-
-    def _check_bended_arms(self, keypoints):
-        """Check for proper arm positioning (returns warnings)"""
+    
+    def _check_bended_right_arm(self, keypoints):
+        """Check for right arm bending (returns warning)"""
         warnings = []
         try:
-            # Right arm analysis
             shoulder = keypoints[CocoKeypoints.RIGHT_SHOULDER.value]
             elbow = keypoints[CocoKeypoints.RIGHT_ELBOW.value]
             wrist = keypoints[CocoKeypoints.RIGHT_WRIST.value]
-            right_angle = self._calculate_angle(wrist, elbow, shoulder)
-            self.right_arm_angles.append(right_angle)
             
-            # Left arm analysis
+            right_angle = self._calculate_angle(wrist, elbow, shoulder)
+            
+            self.right_arm_angles.append(right_angle)
+
+            avg_right = np.mean(self.right_arm_angles[-self.history_length_to_average:] if self.right_arm_angles else 0)
+
+            if avg_right > self.right_arm_angle_threshold:
+                warnings.append("Right arm bent")
+
+            return warnings
+                
+        except Exception as e:
+            print(f"Right arm check error: {e}")
+        
+        return warnings
+    
+    def _check_bended_left_arm(self, keypoints):
+        """Check for left arm bending (returns warning)"""
+        warnings = []
+        try:
             shoulder = keypoints[CocoKeypoints.LEFT_SHOULDER.value]
             elbow = keypoints[CocoKeypoints.LEFT_ELBOW.value]
             wrist = keypoints[CocoKeypoints.LEFT_WRIST.value]
+            
             left_angle = self._calculate_angle(wrist, elbow, shoulder)
+            
             self.left_arm_angles.append(left_angle)
-            
-            # Analyze angles with moving average
-            avg_right = np.mean(self.right_arm_angles[-self.history_length_to_average:] if self.right_arm_angles else 0)
+
             avg_left = np.mean(self.left_arm_angles[-self.history_length_to_average:] if self.left_arm_angles else 0)
-            
-            if avg_right > self.right_arm_angle_threshold:
-                warnings.append("Right arm bent")
+
             if avg_left < self.left_arm_angle_threshold:
                 warnings.append("Left arm bent")
+
+            return warnings
                 
         except Exception as e:
-            print(f"Arm angle check error: {e}")
+            print(f"Left arm check error: {e}")
         
         return warnings
 
@@ -116,13 +133,14 @@ class PostureAnalyzer:
     def validate_posture(self, keypoints, wrists_midpoint, chest_params):
         """Run all posture validations (returns aggregated warnings)"""
         warnings = []
-        warnings += self._check_bended_arms(keypoints)
+        warnings += self._check_bended_right_arm(keypoints)
+        warnings += self._check_bended_left_arm(keypoints)
         warnings += self._check_one_handed_cpr(keypoints)
         warnings += self._check_hands_on_chest(wrists_midpoint, chest_params)
         return warnings
 
     def display_warnings(self, frame):
-        """Display posture warnings on the frame with colored background rectangles
+        """Display posture warnings with colored background rectangles
         
         Args:
             frame: Input image frame to draw warnings on
@@ -133,84 +151,60 @@ class PostureAnalyzer:
         if not self.warnings:
             return frame
 
-        try:
-            # Define warning types and their properties
-            warning_config = {
-                "arm_angles": {
-                    "texts": ["Right arm bent", "Left arm bent"],
-                    "color": (0, 0, 255),  # Red
-                    "position": self.warning_positions['arm_angles']
-                },
-                "one_handed": {
-                    "text": "One-handed CPR detected!",
-                    "color": (0, 255, 0),  # Green
-                    "position": self.warning_positions['one_handed']
-                },
-                "hands_not_on_chest": {
-                    "text": "Hands not on chest!",
-                    "color": (255, 0, 0),  # Blue
-                    "position": self.warning_positions['hands_not_on_chest']
-                }
+        warning_config = {
+            "Right arm bent": {
+                "color": (0, 0, 255),  # Red
+                "position": self.warning_positions['right_arm_angle'],
+                "text": "Right arm bent!"
+            },
+            "Left arm bent": {
+                "color": (0, 255, 255),  # Yellow
+                "position": self.warning_positions['left_arm_angle'],
+                "text": "Left arm bent!"
+            },
+            "One-handed": {
+                "color": (0, 255, 0),  # Green
+                "position": self.warning_positions['one_handed'],
+                "text": "One-handed CPR detected!"
+            },
+            "Hands not on chest": {
+                "color": (255, 0, 0),  # Blue
+                "position": self.warning_positions['hands_not_on_chest'],
+                "text": "Hands not on chest!"
             }
+        }
 
-            # Process arm angle warnings first (may have multiple)
-            arm_warnings = [w for w in self.warnings if w in warning_config["arm_angles"]["texts"]]
-            y_offset = 0
-            for warn in arm_warnings:
-                pos = (warning_config["arm_angles"]["position"][0],
-                    warning_config["arm_angles"]["position"][1] + y_offset)
-                
-                # Calculate text size and rectangle
-                (text_width, text_height), _ = cv2.getTextSize(
-                    warn, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                
-                # Draw rectangle
-                cv2.rectangle(frame,
-                            (pos[0] - 10, pos[1] - text_height - 10),
-                            (pos[0] + text_width + 10, pos[1] + 10),
-                            warning_config["arm_angles"]["color"], -1)
-                
-                # Draw text
-                cv2.putText(frame, warn, pos,
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
-                        cv2.LINE_AA)
-                y_offset += 40
-
-            # Process one-handed CPR warning
-            if any("One-handed" in w for w in self.warnings):
-                pos = warning_config["one_handed"]["position"]
-                text = warning_config["one_handed"]["text"]
-                
-                (text_width, text_height), _ = cv2.getTextSize(
-                    text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                
-                cv2.rectangle(frame,
-                            (pos[0] - 10, pos[1] - text_height - 10),
-                            (pos[0] + text_width + 10, pos[1] + 10),
-                            warning_config["one_handed"]["color"], -1)
-                
-                cv2.putText(frame, text, pos,
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
-                        cv2.LINE_AA)
-
-            # Process hands not on chest warning
-            if any("Hands not on chest" in w for w in self.warnings):
-                pos = warning_config["hands_not_on_chest"]["position"]
-                text = warning_config["hands_not_on_chest"]["text"]
-                
-                (text_width, text_height), _ = cv2.getTextSize(
-                    text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                
-                cv2.rectangle(frame,
-                            (pos[0] - 10, pos[1] - text_height - 10),
-                            (pos[0] + text_width + 10, pos[1] + 10),
-                            warning_config["hands_not_on_chest"]["color"], -1)
-                
-                cv2.putText(frame, text, pos,
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
-                        cv2.LINE_AA)
-
+        try:
+            for warning_text, config in warning_config.items():
+                if any(warning_text in w for w in self.warnings):
+                    self._draw_warning_banner(
+                        frame=frame,
+                        text=config['text'],
+                        color=config['color'],
+                        position=config['position']
+                    )
+            
         except Exception as e:
             print(f"Warning display error: {e}")
         
         return frame
+
+    def _draw_warning_banner(self, frame, text, color, position):
+        """Helper function to draw a single warning banner"""
+        (text_width, text_height), _ = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+        
+        x, y = position
+        # Calculate background rectangle coordinates
+        x1 = x - 10
+        y1 = y - text_height - 10
+        x2 = x + text_width + 10
+        y2 = y + 10
+        
+        # Draw background rectangle
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
+        
+        # Draw warning text
+        cv2.putText(frame, text, (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
+                    cv2.LINE_AA)

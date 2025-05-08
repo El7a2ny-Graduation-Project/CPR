@@ -125,6 +125,11 @@ class CPRAnalyzer:
                     waiting_to_start_new_chunk = False
                     chunk_start_frame_index = frame_counter
                     print(f"[RUN ANALYSIS] A new chunk is starting")
+          
+                    self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
+
+                    self.posture_errors_for_current_error_region.clear()
+                    print(f"[RUN ANALYSIS] Reset posture errors for current error region")
 
                 # Check if a the current chunks is complete the calculate the metrics for it.
                 if (is_complete_chunk or frame_counter == self.frame_count - 1) and not waiting_to_start_new_chunk:  
@@ -146,10 +151,6 @@ class CPRAnalyzer:
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
-
-                    self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
-                    self.posture_errors_for_current_error_region.clear()
-                    print(f"[RUN ANALYSIS] Reset posture errors for current error region")
                                 
                 # Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):
@@ -307,7 +308,6 @@ class CPRAnalyzer:
         else:
             #* Chunk Completion Check
             is_complete_chunk = True
-            
             num_warnings_before = len(self.posture_errors_for_current_error_region)
 
             for warning in warnings:
@@ -317,6 +317,7 @@ class CPRAnalyzer:
                 
                 if num_warnings_after > num_warnings_before:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}")
+                    
 
         #& Bounding Boxes, Keypoints, Warnings, Wrists Midpoints, and Chest Region Drawing
         # Bounding boxes and keypoints
@@ -392,13 +393,6 @@ class CPRAnalyzer:
         except Exception as e:
             print(f"[ERROR] Metric calculation failed: {str(e)}")
 
-    def _plot_motion_curve_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
-        try:
-            self.metrics_calculator.plot_motion_curve(chunk_start_frame_index, chunk_end_frame_index)
-            print("[PLOT] Motion curve for chunk plotted")
-        except Exception as e:
-            print(f"[ERROR] Failed to plot motion curve for chunk: {str(e)}")
-
     def _calculate_rate_and_depth_for_all_chunks(self):
         try:
             self.metrics_calculator.calculate_weighted_averages()
@@ -416,7 +410,7 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
     
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)

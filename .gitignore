@@ -1,6 +1,7 @@
 .vscode/
 
 Dataset/
+**/Output/
 myenv/
 *.mp4
 *.avi
