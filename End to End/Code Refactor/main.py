@@ -74,13 +74,12 @@ class CPRAnalyzer:
         #& Initialize variables for reporting warnings
         self.posture_errors_for_current_error_region = set()
 
-        #! Sampling and reporting intermals should not be multiples of each other because this results in a gap of sampling_interval_in_frames ever reporting_interval_in_frames frames.
         #& Frequent depth and rate calculations
         self.reporting_interval_in_seconds = 5
         self.reporting_interval_in_frames = int(self.fps * self.reporting_interval_in_seconds)
         print(f"[INIT] Reporting interval set to {self.reporting_interval_in_seconds} seconds ({self.reporting_interval_in_frames} frames)")
-
-        #& Sampling
+        
+		#& Sampling
         self.sampling_interval_in_seconds = 0.2
         self.sampling_interval_in_frames = int(self.fps * self.sampling_interval_in_seconds)
         print(f"[INIT] Sampling interval set to {self.sampling_interval_in_seconds} seconds ({self.sampling_interval_in_frames} frames)")
@@ -91,56 +90,64 @@ class CPRAnalyzer:
 
             main_loop_start_time = time.time()
 
-            #& Initialize variables used in handling chunks
+            #& Initialize Variables
+            # Handling chunks
             first_time_to_have_a_proccessed_frame = True
             waiting_to_start_new_chunk = False
-
-            #& Initialize variables used in handling mini chunks
+            # Hndling mini chunks
             mini_chunk_start_frame_index = None
 
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
             while self.cap.isOpened():
-                # Always advance to next frame first
+                #& Always advance to next frame first
                 ret = self.cap.grab()  # Faster than read() for skipping
                 if not ret: break
-                    
+                
+                #& Get frame number
                 # Retrieve the current position of the video frame being processed in the video capture object (self.cap).
                 frame_counter = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
                 print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}]")
-
+                
+				#& Check if you want to skip the frame
                 if frame_counter % self.sampling_interval_in_frames != 0:
                     print(f"[SKIP FRAME] Skipping frame {int(frame_counter)}")
                     continue
                 
-                # Retrieve and process frame
+                #& Retrieve and process frame
                 _, frame = self.cap.retrieve()
                 print(f"[RUN ANALYSIS] Retrieved frame")
                 
-                # Rotate frame
+                #& Rotate frame
                 frame = self._handle_frame_rotation(frame)
                 print(f"[RUN ANALYSIS] Rotated frame")
 
-                # Process frame
-                processed_frame, is_complete_chunk = self._process_frame(frame)
+                #& Process frame
+                # Processing a frame means updating the values for the current and previous detections both in the CPR Analyzer and the system components it includes.
+                # The returned flags are:
+                # - is_complete_chunk: True if a "Posture Error" occurs in the frame, False otherwise.
+                # - accept_frame: True if the frame is accepted for further processing, False otherwise.
+                # Not that a frame containing an error could be accepted if the number of consecutive frames with errors is less than the threshold.
+                is_complete_chunk, accept_frame = self._process_frame(frame)
                 print(f"[RUN ANALYSIS] Processed frame")
                 
-                # Display frame
-                if processed_frame is not None:
-                    # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
-                    # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
-                    # This is why the first chunk starts from the first frame that has been processed successfully.
-                    if first_time_to_have_a_proccessed_frame:
-                        first_time_to_have_a_proccessed_frame = False
-                        chunk_start_frame_index = frame_counter
-                        mini_chunk_start_frame_index = frame_counter
-                        print(f"[RUN ANALYSIS] First processed frame detected")
-
-                    self._display_frame(processed_frame)
-                else:
-                    self._display_frame(frame)
-                print(f"[RUN ANALYSIS] Displayed frame")
+                #& Compose frame
+                # This function is responsible for drawing the data detected during the processing of the frame on it.
+                # The frame would not be displayed yet, just composed.
+                processed_frame = self._compose_frame(frame, accept_frame)
+                print(f"[RUN ANALYSIS] Composed frame")
                 
+                #& Set the chunk start frame index for the first chunk
+                # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
+                # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
+                # This is why the first chunk starts from the first frame that has been processed successfully.
+                if (processed_frame is not None) and first_time_to_have_a_proccessed_frame:
+                    first_time_to_have_a_proccessed_frame = False
+                    chunk_start_frame_index = frame_counter
+                    mini_chunk_start_frame_index = frame_counter
+                    print(f"[RUN ANALYSIS] First processed frame detected")
+
+                #& Set the chunk start frame index for the all chunks after the first one & append the errors detected in the error region before this chunk if any
                 # When a "Posture Error" occurs, a chunk is considered complete, and the program becomes ready to start a new chunk.
                 # is_complete_chunk is returned as true for every frame that has a "Posture Error" in it, and false for every other frame.
                 # This is why we need to wait for a frame with a false is_complete_chunk to start a new chunk.
@@ -155,8 +162,11 @@ class CPRAnalyzer:
                         self.posture_errors_for_current_error_region.clear()
                         print(f"[RUN ANALYSIS] Reset posture errors for current error region")
 
-                # Check if a the current chunks is complete the calculate the metrics for it.
-                if (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk):  
+                #& Process the current chunk or mini chunk if the conditions are met
+                process_chunk = (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk)
+                process_mini_chunk = (frame_counter % self.reporting_interval_in_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk)                     
+
+                if process_chunk: 
                     print(f"[RUN ANALYSIS] Chunk completion detected")
 
                     # The difference here results from the fact a first middle chunk is terminated by a "Posture Error" which is a frame not included in the chunk.
@@ -169,26 +179,31 @@ class CPRAnalyzer:
 
                     self._calculate_rate_and_depth_for_chunk(chunk_start_frame_index, chunk_end_frame_index)
                     print(f"[RUN ANALYSIS] Calculated metrics for the chunk")
-              
+
+                elif process_mini_chunk:
+                    print(f"[RUN ANALYSIS] Mini chunk completion detected")
+
+                    mini_chunk_end_frame_index = frame_counter
+                    print(f"[RUN ANALYSIS] Determined the last frame of the mini chunk")
+
+                    self._calculate_rate_and_depth_for_chunk(mini_chunk_start_frame_index, mini_chunk_end_frame_index)
+                    print(f"[RUN ANALYSIS] Calculated metrics for the mini chunk")                       
+                        
+                if process_chunk or process_mini_chunk:
                     waiting_to_start_new_chunk = True
 
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
-                else:      
-                    if (frame_counter % self.reporting_interval_in_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk):
-                        mini_chunk_end_frame_index = frame_counter
-                        
-                        self._calculate_rate_and_depth_for_chunk(mini_chunk_start_frame_index, mini_chunk_end_frame_index)
-                        print(f"[RUN ANALYSIS] Calculated metrics for the mini chunk")
-                        
-                        waiting_to_start_new_chunk = True
 
-                        self.shoulders_analyzer.reset_shoulder_distances()
-                        self.wrists_midpoint_analyzer.reset_midpoint_history()
-                        print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
+                #& Display frame
+                if processed_frame is not None:
+                    self._display_frame(processed_frame)
+                else:
+                    self._display_frame(frame)
+                print(f"[RUN ANALYSIS] Displayed frame")
                                 
-                # Check if the user wants to quit
+                #& Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):
                     print("\n[RUN ANALYSIS] Analysis interrupted by user")
                     break
@@ -227,6 +242,7 @@ class CPRAnalyzer:
     def _process_frame(self, frame):
         #* Chunk Completion Check
         is_complete_chunk = False
+        accept_frame = True
         
         #& Pose Estimation
         pose_results = self.pose_estimator.detect_poses(frame)
@@ -240,7 +256,7 @@ class CPRAnalyzer:
         
         if not pose_results:
             print("[POSE ESTIMATION] Insufficient data for processing")
-            return None, is_complete_chunk
+            return is_complete_chunk, accept_frame
         
         #& Rescuer and Patient Classification
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
@@ -260,7 +276,7 @@ class CPRAnalyzer:
         
         if not rescuer_processed_results or not patient_processed_results:
             print("[ROLE CLASSIFICATION] Insufficient data for processing")
-            return None, is_complete_chunk
+            return is_complete_chunk, accept_frame
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
@@ -279,7 +295,7 @@ class CPRAnalyzer:
 
         if not chest_params:
             print("[CHEST ESTIMATION] Insufficient data for processing")
-            return None, is_complete_chunk
+            return is_complete_chunk, accept_frame
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
@@ -327,7 +343,7 @@ class CPRAnalyzer:
         
         if not midpoint:
             print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
-            return None, is_complete_chunk
+            return is_complete_chunk, accept_frame
 
         if accept_frame:
             #^ Set Params in Role Classifier (to draw later)
@@ -352,10 +368,11 @@ class CPRAnalyzer:
                 num_warnings_after = len(self.posture_errors_for_current_error_region)
                 
                 if num_warnings_after > num_warnings_before:
-                    print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}")
-                    
-
-        #& Warnings, Wrists Midpoints, and Chest Region Drawing
+                    print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
+    
+        return is_complete_chunk, accept_frame
+    
+    def _compose_frame(self, frame, accept_frame):
         # Chest Region
         if frame is not None:
             frame = self.chest_initializer.draw_expected_chest_region(frame)
@@ -370,9 +387,9 @@ class CPRAnalyzer:
             if accept_frame:
                 # Midpoint
                 frame = self.wrists_midpoint_analyzer.draw_midpoint(frame)   
-                print(f"[VISUALIZATION] Drawn midpoint")   
-    
-        return frame, is_complete_chunk
+                print(f"[VISUALIZATION] Drawn midpoint")  
+        
+        return frame
 
     def _display_frame(self, frame):        
         # Get original frame dimensions
@@ -424,7 +441,7 @@ class CPRAnalyzer:
             print("[PLOT] Full motion curve plotted")
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
-    
+  
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
