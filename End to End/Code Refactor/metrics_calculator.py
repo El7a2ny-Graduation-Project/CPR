@@ -28,6 +28,17 @@ class MetricsCalculator:
 
         self.frame_count = frame_count
 
+        # Validation thresholds
+        self.depth = None
+        self.rate = None
+
+        self.min_depth_threshold = 3.0  # cm
+        self.max_depth_threshold = 6.0  # cm
+
+        self.min_rate_threshold = 100.0  # cpm
+        self.max_rate_threshold = 120.0  # cpm
+        
+
     def smooth_midpoints(self, midpoints):
         """Apply Savitzky-Golay filter to smooth motion data"""
         self.midpoints_list = np.array(midpoints)
@@ -140,6 +151,9 @@ class MetricsCalculator:
                 self.peaks = np.array([])  # Reset peaks if no valid data
 
             # Store the results of this chunk for the final report if they are not None
+            self.depth = depth
+            self.rate = rate
+
             self.chunks_depth.append(depth)
             self.chunks_rate.append(rate)
             self.chunks_start_and_end_indices.append((chunk_start_frame_index, chunk_end_frame_index))
@@ -392,3 +406,19 @@ class MetricsCalculator:
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
+    def validate_calculate_metrics(self):
+        """Validate the calculated metrics against thresholds"""
+        if self.depth is None or self.rate is None:
+            print("[ERROR] Depth and rate must be calculated before validation")
+            return False
+
+        depth_valid = self.min_depth_threshold <= self.depth <= self.max_depth_threshold
+        rate_valid = self.min_rate_threshold <= self.rate <= self.max_rate_threshold
+
+        if not depth_valid:
+            print(f"[WARNING] Depth {self.depth:.1f}cm is out of range ({self.min_depth_threshold}-{self.max_depth_threshold})")
+        if not rate_valid:
+            print(f"[WARNING] Rate {self.rate:.1f}cpm is out of range ({self.min_rate_threshold}-{self.max_rate_threshold})")
+
+        return depth_valid and rate_valid
