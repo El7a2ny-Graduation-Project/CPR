@@ -426,7 +426,7 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
     
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
