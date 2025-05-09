@@ -4,6 +4,8 @@ import time
 import tkinter as tk  # For screen size detection
 from datetime import datetime
 import math
+import sys
+import numpy as np
 
 from pose_estimation import PoseEstimator
 from role_classifier import RoleClassifier
@@ -67,7 +69,7 @@ class CPRAnalyzer:
 
         #& Workaround for minor glitches
         self.consecutive_frames_with_posture_errors = 0
-        self.max_consecutive_frames_with_posture_errors = 10
+        self.max_consecutive_frames_with_posture_errors = 1
 
         #& Initialize variables for reporting warnings
         self.posture_errors_for_current_error_region = set()
@@ -400,29 +402,18 @@ class CPRAnalyzer:
 
     def _calculate_rate_and_depth_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
         try:
-            self.metrics_calculator.smooth_midpoints(self.wrists_midpoint_analyzer.midpoint_history)
-            print("[METRICS] Smoothed midpoints")
-            
-            self.metrics_calculator.detect_peaks()
-            print("[METRICS] Detected peaks")
-            
-            depth, rate = self.metrics_calculator.calculate_metrics(
-                self.shoulders_analyzer.shoulder_distance_history,
-                self.cap.get(cv2.CAP_PROP_FPS),
-                chunk_start_frame_index, 
-                chunk_end_frame_index,
-                self.sampling_interval_in_frames)
-            print("[METRICS] Calculated metrics")
+            result = self.metrics_calculator.handle_chunk(np.array(self.wrists_midpoint_analyzer.midpoint_history), chunk_start_frame_index, chunk_end_frame_index, self.fps, np.array(self.shoulders_analyzer.shoulder_distance_history), self.sampling_interval_in_frames)
 
-            if depth is None or rate is None:
-                print("[ERROR] Depth or rate calculation failed, likely due to insufficient data points (<2 peaks)")
+            if result == False:
+                print("[ERROR] Failed to calculate metrics for the chunk")
+                return
             
         except Exception as e:
             print(f"[ERROR] Metric calculation failed: {str(e)}")
 
     def _calculate_rate_and_depth_for_all_chunks(self):
         try:
-            self.metrics_calculator.calculate_weighted_averages()
+            self.metrics_calculator.calculate_rate_and_depth_for_all_chunk()
             print(f"[METRICS] Weighted averages calculated")
         except Exception as e:
             print(f"[ERROR] Failed to calculate weighted averages: {str(e)}")
