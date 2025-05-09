@@ -36,7 +36,7 @@ class MetricsCalculator:
             try:
                 self.y_smoothed = savgol_filter(
                     self.midpoints_list[:, 1], 
-                    window_length=10, 
+                    window_length=3, 
                     polyorder=2, 
                     mode='nearest'
                 )
@@ -56,7 +56,7 @@ class MetricsCalculator:
             return False
             
         try:
-            distance = min(10, len(self.y_smoothed))  # Dynamic distance based on data length
+            distance = min(1, len(self.y_smoothed))  # Dynamic distance based on data length
 
             # Detect max peaks with default prominence
             self.peaks_max, _ = find_peaks(self.y_smoothed, distance=distance)
@@ -75,43 +75,51 @@ class MetricsCalculator:
             print(f"Peak detection error: {e}")
             return False
 
-    def _validate_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
-        """Validate that the data length matches the expected frame range.
-        Terminates the program with error code 1 if validation fails.
+    def _validate_chunk(self, chunk_start_frame_index, chunk_end_frame_index, sampling_interval_in_frames):
+        """Validate data length accounting for frame sampling interval.
+        Terminates program if validation fails.
         
         Args:
-            chunk_start_frame_index: Start frame index of the chunk
-            chunk_end_frame_index: End frame index of the chunk
+            chunk_start_frame_index: Start frame index of chunk
+            chunk_end_frame_index: End frame index of chunk
+            sampling_interval_in_frames: Frame sampling interval
             
         Exits:
-            If validation fails, prints error message and exits with code 1
+            If validation fails, prints error and exits with code 1
         """
         try:
-            # Calculate expected number of frames
-            num_frames = chunk_end_frame_index - chunk_start_frame_index + 1
+            # Calculate expected number of sampled frames
+            start = chunk_start_frame_index
+            end = chunk_end_frame_index
+            interval = sampling_interval_in_frames
             
+            # Mathematical formula to count sampled frames
+            expected_samples = (end // interval) - ((start - 1) // interval)
+
             # Validate midpoints data
-            if len(self.midpoints_list[:, 1]) != num_frames:
-                print(f"\nERROR: Data length mismatch in midpoints_list")
-                print(f"Expected: {num_frames} frames ({chunk_start_frame_index}-{chunk_end_frame_index})")
-                print(f"Actual: {len(self.midpoints_list[:, 1])} frames")
+            actual_midpoints = len(self.midpoints_list)
+            if actual_midpoints != expected_samples:
+                print(f"\nERROR: Midpoint count mismatch")
+                print(f"Expected: {expected_samples} samples (frames {start}-{end} @ every {interval} frames)")
+                print(f"Actual: {actual_midpoints} midpoints collected")
                 sys.exit(1)
-                
+
             # Validate smoothed data
-            if len(self.y_smoothed) != num_frames:
-                print(f"\nERROR: Data length mismatch in y_smoothed")
-                print(f"Expected: {num_frames} frames ({chunk_start_frame_index}-{chunk_end_frame_index})")
-                print(f"Actual: {len(self.y_smoothed)} frames")
+            actual_smoothed = len(self.y_smoothed)
+            if actual_smoothed != expected_samples:
+                print(f"\nERROR: Smoothed data mismatch")
+                print(f"Expected: {expected_samples} samples (frames {start}-{end} @ every {interval} frames)")
+                print(f"Actual: {actual_smoothed} smoothed points")
                 sys.exit(1)
-                
+
         except Exception as e:
             print(f"\nCRITICAL VALIDATION ERROR: {str(e)}")
             sys.exit(1)
 
-    def calculate_metrics(self, shoulder_distances, fps, chunk_start_frame_index, chunk_end_frame_index):
+    def calculate_metrics(self, shoulder_distances, fps, chunk_start_frame_index, chunk_end_frame_index, sampling_interval_in_frames):
         """Calculate compression metrics with improved calculations"""        
         
-        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
+        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index, sampling_interval_in_frames)
                 
         self.shoulder_distances = shoulder_distances
 
@@ -154,51 +162,7 @@ class MetricsCalculator:
         except Exception as e:
             print(f"Metric calculation error: {e}")
             return None, None
-
-    def plot_motion_curve(self, chunk_start_frame_index, chunk_end_frame_index):
-        """Enhanced visualization with original and smoothed data"""
-        if self.midpoints_list.size == 0:
-            print("No midpoint data to plot")
-            return
-        
-        self._validate_chunk(chunk_start_frame_index, chunk_end_frame_index)
-
-        # Create frame index array for x-axis
-        frame_indices = np.arange(chunk_start_frame_index, chunk_end_frame_index + 1)
-
-
-        plt.figure(figsize=(12, 6))
-        
-        # Plot original and smoothed data with correct frame indices
-        plt.plot(frame_indices, self.midpoints_list[:, 1], 
-                label="Original Motion", 
-                color="red", 
-                linestyle="dashed", 
-                alpha=0.6)
-    
-        plt.plot(frame_indices, self.y_smoothed, 
-                label="Smoothed Motion", 
-                color="blue", 
-                linewidth=2)
-
-        # Plot peaks if detected
-        if self.peaks.size > 0:
-            plt.plot(frame_indices[self.peaks], 
-                    self.y_smoothed[self.peaks], 
-                    "x", 
-                    color="green", 
-                    markersize=10, 
-                    label="Peaks")
-        else:
-            print("No peaks to plot")
-
-        plt.xlabel("Frame Number")
-        plt.ylabel("Vertical Position (px)")
-        plt.title("Compression Motion Analysis")
-        plt.grid(True)
-        plt.legend()
-        plt.show()
-    
+  
     def calculate_weighted_averages(self):
         """Calculate weighted averages based on chunk durations
         """
@@ -237,19 +201,11 @@ class MetricsCalculator:
         
         return weighted_depth, weighted_rate
 
-    def plot_motion_curve_for_all_chunks(self, posture_errors_for_all_error_region):
-        """Plot combined analysis with metrics annotations and posture error labels"""
+    def plot_motion_curve_for_all_chunks(self, posture_errors_for_all_error_region, sampling_interval_in_frames, reporting_interval_in_frames):
+        """Plot combined analysis with connected chunks and proper error regions"""
         if not self.chunks_start_and_end_indices:
             print("No chunk data available for plotting")
             return
-
-        # Print chunk information before plotting
-        print("\n=== Chunk Ranges ===")
-        for i, (start_end, depth, rate) in enumerate(zip(self.chunks_start_and_end_indices, 
-                                                    self.chunks_depth, 
-                                                    self.chunks_rate)):
-            print(f"Chunk {i+1}: Frames {start_end[0]}-{start_end[1]} | "
-                f"Depth: {depth:.1f}cm | Rate: {rate:.1f}cpm")
 
         plt.figure(figsize=(16, 8))
         ax = plt.gca()
@@ -260,27 +216,52 @@ class MetricsCalculator:
                         self.chunks_rate),
                         key=lambda x: x[0][0])
         
-        # 1. Plot all valid chunks with metrics
-        prev_chunk_end = None  # Track previous chunk's end position
+        # Track previous chunk's last point
+        prev_last_point = None
+        prev_chunk_end = None
 
         for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
-            chunk_frames = np.arange(start, end + 1)
+            # Get chunk data
+            chunk_frames = np.arange(start, end + 1, sampling_interval_in_frames)
             midpoints = self.chunks_midpoints[idx]
             smoothed = self.chunks_smoothed[idx]
             peaks = self.chunks_peaks[idx]
             
-            # Add separator line between chunks
+            # Add separator line between chunks (ORANGE DOTTED LINE)
             if prev_chunk_end is not None:
                 separator_x = prev_chunk_end + 0.5  # Midpoint between chunks
                 ax.axvline(x=separator_x, color='orange', linestyle=':', linewidth=1.5)
             
-            # Plot data
-            ax.plot(chunk_frames, midpoints[:, 1], 
+            # Check if we need to connect chunks
+            if (prev_chunk_end is not None and 
+                start == prev_chunk_end + sampling_interval_in_frames and
+                prev_last_point is not None):
+                
+                # Connect the last point of previous chunk to first point of current
+                connect_frames = [prev_chunk_end, start]
+                connect_midpoints = np.vstack([
+                    prev_last_point['midpoint'],
+                    midpoints[0]
+                ])
+                connect_smoothed = [
+                    prev_last_point['smoothed'],
+                    smoothed[0]
+                ]
+                
+                # Plot connection
+                ax.plot(connect_frames, connect_midpoints[:, 1],
+                    color="red", linestyle="dashed", alpha=0.6)
+                ax.plot(connect_frames, connect_smoothed,
+                    color="blue", linewidth=2)
+            
+            # Plot current chunk data
+            line_orig = ax.plot(chunk_frames, midpoints[:, 1], 
                 color="red", linestyle="dashed", alpha=0.6,
-                label="Original Motion" if idx == 0 else "")
-            ax.plot(chunk_frames, smoothed,
+                label="Original Motion" if idx == 0 else "")[0]
+            
+            line_smooth = ax.plot(chunk_frames, smoothed,
                 color="blue", linewidth=2,
-                label="Smoothed Motion" if idx == 0 else "")
+                label="Smoothed Motion" if idx == 0 else "")[0]
             
             # Plot peaks
             if peaks.size > 0:
@@ -288,34 +269,62 @@ class MetricsCalculator:
                     "x", color="green", markersize=8,
                     label="Peaks" if idx == 0 else "")
 
-            # Annotate chunk metrics
-            mid_frame = (start + end) // 2
-            ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
-                    xy=(mid_frame, np.max(smoothed)),
-                    xytext=(0, 10), textcoords='offset points',
-                    ha='center', va='bottom', fontsize=9,
-                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
-
-            # Update previous chunk end tracker
+            # Store last point for potential connection
+            prev_last_point = {
+                'midpoint': midpoints[-1],
+                'smoothed': smoothed[-1]
+            }
             prev_chunk_end = end
-        # 2. Identify and label posture error regions
+
+            # Annotate chunk metrics
+            if depth is not None and rate is not None:
+                mid_frame = (start + end) // 2
+                ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
+                        xy=(mid_frame, np.max(smoothed)),
+                        xytext=(0, 10), textcoords='offset points',
+                        ha='center', va='bottom', fontsize=9,
+                        bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
+    
+        # 2. Identify and label posture error regions (modified)
         error_regions = []
         
-        # Before first chunk
-        if sorted_chunks[0][0][0] > 0:
-            error_regions.append((0, sorted_chunks[0][0][0]-1))
+        # Get all chunk boundaries
+        chunk_boundaries = [chunk[0][0] for chunk in sorted_chunks]  # Start frames
+        chunk_boundaries.append(sorted_chunks[-1][0][1])  # Add last end frame
         
-        # Between chunks
+        # Before first chunk
+        first_chunk_start = sorted_chunks[0][0][0]
+        if first_chunk_start > 0:
+            error_regions.append((0, first_chunk_start - 1))
+        
+        # Between chunks - now checking for genuine gaps
         for i in range(1, len(sorted_chunks)):
             prev_end = sorted_chunks[i-1][0][1]
             curr_start = sorted_chunks[i][0][0]
-            if curr_start - prev_end > 1:
+            
+            # Only consider it an error region if gap > reporting_interval
+            if curr_start - prev_end > reporting_interval_in_frames + 1:  # +1 for safety margin
                 error_regions.append((prev_end + 1, curr_start - 1))
         
         # After last chunk
         last_end = sorted_chunks[-1][0][1]
         if last_end < self.frame_count - 1:
             error_regions.append((last_end + 1, self.frame_count - 1))
+        
+        # Filter out reporting interval boundaries
+        filtered_error_regions = []
+        for region in error_regions:
+            start, end = region
+            # Check if this region aligns with reporting interval boundaries
+            is_reporting_boundary = any(
+                abs(start - boundary) <= 1 or abs(end - boundary) <= 1
+                for boundary in chunk_boundaries
+            )
+            if not is_reporting_boundary and (end - start) > 0:  # Ensure valid region
+                filtered_error_regions.append(region)
+        
+        # Use filtered_error_regions for the rest of the plotting
+        error_regions = filtered_error_regions
 
         # Print error regions information
         print("\n=== Error Regions ===")
@@ -392,3 +401,5 @@ class MetricsCalculator:
         plt.grid(True)
         plt.tight_layout()
         plt.show()
+
+    # Elhamdullilah

@@ -3,6 +3,7 @@ import cv2
 import time
 import tkinter as tk  # For screen size detection
 from datetime import datetime
+import math
 
 from pose_estimation import PoseEstimator
 from role_classifier import RoleClassifier
@@ -71,10 +72,16 @@ class CPRAnalyzer:
         #& Initialize variables for reporting warnings
         self.posture_errors_for_current_error_region = set()
 
+        #! Sampling and reporting intermals should not be multiples of each other because this results in a gap of sampling_interval_in_frames ever reporting_interval_in_frames frames.
         #& Frequent depth and rate calculations
         self.reporting_interval_in_seconds = 5
         self.reporting_interval_in_frames = int(self.fps * self.reporting_interval_in_seconds)
         print(f"[INIT] Reporting interval set to {self.reporting_interval_in_seconds} seconds ({self.reporting_interval_in_frames} frames)")
+
+        #& Sampling
+        self.sampling_interval_in_seconds = 0.2
+        self.sampling_interval_in_frames = int(self.fps * self.sampling_interval_in_seconds)
+        print(f"[INIT] Sampling interval set to {self.sampling_interval_in_seconds} seconds ({self.sampling_interval_in_frames} frames)")
 
     def run_analysis(self):
         try:
@@ -92,16 +99,21 @@ class CPRAnalyzer:
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
             while self.cap.isOpened():
+                # Always advance to next frame first
+                ret = self.cap.grab()  # Faster than read() for skipping
+                if not ret: break
+                    
                 # Retrieve the current position of the video frame being processed in the video capture object (self.cap).
                 frame_counter = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
                 print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}]")
+
+                if frame_counter % self.sampling_interval_in_frames != 0:
+                    print(f"[SKIP FRAME] Skipping frame {int(frame_counter)}")
+                    continue
                 
-                # Read frame
-                ret, frame = self.cap.read()
-                if not ret:
-                    print("[ERROR] Failed to read frame or end of video reached")
-                    break
-                print(f"[RUN ANALYSIS] Read frame")
+                # Retrieve and process frame
+                _, frame = self.cap.retrieve()
+                print(f"[RUN ANALYSIS] Retrieved frame")
                 
                 # Rotate frame
                 frame = self._handle_frame_rotation(frame)
@@ -173,8 +185,6 @@ class CPRAnalyzer:
                         self.shoulders_analyzer.reset_shoulder_distances()
                         self.wrists_midpoint_analyzer.reset_midpoint_history()
                         print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
-
-
                                 
                 # Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):
@@ -400,7 +410,8 @@ class CPRAnalyzer:
                 self.shoulders_analyzer.shoulder_distance_history,
                 self.cap.get(cv2.CAP_PROP_FPS),
                 chunk_start_frame_index, 
-                chunk_end_frame_index)
+                chunk_end_frame_index,
+                self.sampling_interval_in_frames)
             print("[METRICS] Calculated metrics")
 
             if depth is None or rate is None:
@@ -418,7 +429,7 @@ class CPRAnalyzer:
             
     def _plot_full_motion_curve_for_all_chunks(self):
         try:
-            self.metrics_calculator.plot_motion_curve_for_all_chunks(self.posture_analyzer.posture_errors_for_all_error_region)
+            self.metrics_calculator.plot_motion_curve_for_all_chunks(self.posture_analyzer.posture_errors_for_all_error_region, self.sampling_interval_in_frames, self.reporting_interval_in_frames)
             print("[PLOT] Full motion curve plotted")
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
@@ -426,7 +437,7 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
     
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
