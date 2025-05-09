@@ -71,6 +71,11 @@ class CPRAnalyzer:
         #& Initialize variables for reporting warnings
         self.posture_errors_for_current_error_region = set()
 
+        #& Frequent depth and rate calculations
+        self.reporting_interval_in_seconds = 5
+        self.reporting_interval_in_frames = int(self.fps * self.reporting_interval_in_seconds)
+        print(f"[INIT] Reporting interval set to {self.reporting_interval_in_seconds} seconds ({self.reporting_interval_in_frames} frames)")
+
     def run_analysis(self):
         try:
             print("\n[RUN ANALYSIS] Starting analysis")
@@ -80,6 +85,9 @@ class CPRAnalyzer:
             #& Initialize variables used in handling chunks
             first_time_to_have_a_proccessed_frame = True
             waiting_to_start_new_chunk = False
+
+            #& Initialize variables used in handling mini chunks
+            mini_chunk_start_frame_index = None
 
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
@@ -111,6 +119,7 @@ class CPRAnalyzer:
                     if first_time_to_have_a_proccessed_frame:
                         first_time_to_have_a_proccessed_frame = False
                         chunk_start_frame_index = frame_counter
+                        mini_chunk_start_frame_index = frame_counter
                         print(f"[RUN ANALYSIS] First processed frame detected")
 
                     self._display_frame(processed_frame)
@@ -121,18 +130,19 @@ class CPRAnalyzer:
                 # When a "Posture Error" occurs, a chunk is considered complete, and the program becomes ready to start a new chunk.
                 # is_complete_chunk is returned as true for every frame that has a "Posture Error" in it, and false for every other frame.
                 # This is why we need to wait for a frame with a false is_complete_chunk to start a new chunk.
-                if waiting_to_start_new_chunk and not is_complete_chunk:
+                if (waiting_to_start_new_chunk) and (not is_complete_chunk):
                     waiting_to_start_new_chunk = False
                     chunk_start_frame_index = frame_counter
+                    mini_chunk_start_frame_index = frame_counter
                     print(f"[RUN ANALYSIS] A new chunk is starting")
-          
-                    self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
 
-                    self.posture_errors_for_current_error_region.clear()
-                    print(f"[RUN ANALYSIS] Reset posture errors for current error region")
+                    if len(self.posture_errors_for_current_error_region) > 0:
+                        self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
+                        self.posture_errors_for_current_error_region.clear()
+                        print(f"[RUN ANALYSIS] Reset posture errors for current error region")
 
                 # Check if a the current chunks is complete the calculate the metrics for it.
-                if (is_complete_chunk or frame_counter == self.frame_count - 1) and not waiting_to_start_new_chunk:  
+                if (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk):  
                     print(f"[RUN ANALYSIS] Chunk completion detected")
 
                     # The difference here results from the fact a first middle chunk is terminated by a "Posture Error" which is a frame not included in the chunk.
@@ -151,6 +161,20 @@ class CPRAnalyzer:
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
+                else:      
+                    if (frame_counter % self.reporting_interval_in_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk):
+                        mini_chunk_end_frame_index = frame_counter
+                        
+                        self._calculate_rate_and_depth_for_chunk(mini_chunk_start_frame_index, mini_chunk_end_frame_index)
+                        print(f"[RUN ANALYSIS] Calculated metrics for the mini chunk")
+                        
+                        waiting_to_start_new_chunk = True
+
+                        self.shoulders_analyzer.reset_shoulder_distances()
+                        self.wrists_midpoint_analyzer.reset_midpoint_history()
+                        print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
+
+
                                 
                 # Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):

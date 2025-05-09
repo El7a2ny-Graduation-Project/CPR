@@ -261,11 +261,18 @@ class MetricsCalculator:
                         key=lambda x: x[0][0])
         
         # 1. Plot all valid chunks with metrics
+        prev_chunk_end = None  # Track previous chunk's end position
+
         for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
             chunk_frames = np.arange(start, end + 1)
             midpoints = self.chunks_midpoints[idx]
             smoothed = self.chunks_smoothed[idx]
             peaks = self.chunks_peaks[idx]
+            
+            # Add separator line between chunks
+            if prev_chunk_end is not None:
+                separator_x = prev_chunk_end + 0.5  # Midpoint between chunks
+                ax.axvline(x=separator_x, color='orange', linestyle=':', linewidth=1.5)
             
             # Plot data
             ax.plot(chunk_frames, midpoints[:, 1], 
@@ -289,6 +296,8 @@ class MetricsCalculator:
                     ha='center', va='bottom', fontsize=9,
                     bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
 
+            # Update previous chunk end tracker
+            prev_chunk_end = end
         # 2. Identify and label posture error regions
         error_regions = []
         
