@@ -153,22 +153,22 @@ class PostureAnalyzer:
 
         warning_config = {
             "Right arm bent": {
-                "color": (0, 0, 255),  # Red
+                "color": (52, 110, 235),  
                 "position": self.warning_positions['right_arm_angle'],
                 "text": "Right arm bent!"
             },
             "Left arm bent": {
-                "color": (0, 255, 255),  # Yellow
+                "color": (52, 110, 235),  
                 "position": self.warning_positions['left_arm_angle'],
                 "text": "Left arm bent!"
             },
             "One-handed": {
-                "color": (0, 255, 0),  # Green
+                "color": (27, 150, 70), 
                 "position": self.warning_positions['one_handed'],
                 "text": "One-handed CPR detected!"
             },
             "Hands not on chest": {
-                "color": (255, 0, 0),  # Blue
+                "color": (161, 127, 18),  
                 "position": self.warning_positions['hands_not_on_chest'],
                 "text": "Hands not on chest!"
             }

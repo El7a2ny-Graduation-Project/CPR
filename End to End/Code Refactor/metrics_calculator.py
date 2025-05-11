@@ -3,6 +3,7 @@ import numpy as np
 from scipy.signal import savgol_filter, find_peaks
 import matplotlib.pyplot as plt
 import sys
+import cv2
 
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
@@ -41,7 +42,13 @@ class MetricsCalculator:
 
         self.chunks_start_and_end_indices = []
 
+        # Parameters for validation
+        self.min_depth_threshold = 3.0  # cm
+        self.max_depth_threshold = 6.0  # cm
 
+        self.min_rate_threshold = 100.0  # cpm
+        self.max_rate_threshold = 120.0  # cpm
+        
 #^ ################# Validating #######################
 
     def validate_midpoints_and_frames_count_in_chunk(self, y_exact, chunk_start_frame_index, chunk_end_frame_index, sampling_interval_in_frames):
@@ -285,6 +292,9 @@ class MetricsCalculator:
 
         self.chunks_y_preprocessed.append(self.y_preprocessed.copy())
         self.chunks_peaks.append(self.peaks.copy())      
+
+        self.current_chunk_start = chunk_start_frame_index
+        self.current_chunk_end = chunk_end_frame_index
         
     def calculate_rate_and_depth_for_all_chunk(self):
         """
@@ -376,7 +386,7 @@ class MetricsCalculator:
         return True
 
 #^ ################# Plotting #######################
-    def plot_motion_curve_for_all_chunks(self, posture_errors_for_all_error_region, sampling_interval_in_frames, reporting_interval_in_frames):
+    def plot_motion_curve_for_all_chunks(self, posture_errors_for_all_error_region, sampling_interval_in_frames, reporting_interval):
         """Plot combined analysis with connected chunks and proper error regions"""
         print("[Plot Graph] Initializing complete motion curve plot...")
         
@@ -406,18 +416,10 @@ class MetricsCalculator:
             )
         
         # Compute and plot error regions
-        error_regions = self._compute_error_regions(sorted_chunks, reporting_interval_in_frames)
+        error_regions = self._compute_error_regions(sorted_chunks, sampling_interval_in_frames, reporting_interval)
         print(f"[Plot Graph] Identified {len(error_regions)} error regions")
         self._print_analysis_details(sorted_chunks, error_regions, posture_errors_for_all_error_region)
         self._plot_error_regions(ax, error_regions, posture_errors_for_all_error_region)
-        
-        # Add weighted averages
-        if hasattr(self, 'weighted_depth') and hasattr(self, 'weighted_rate'):
-            print(f"[Plot Graph] Adding weighted averages: Depth={self.weighted_depth:.1f}cm, Rate={self.weighted_rate:.1f}cpm")
-            ax.annotate(f"Weighted Averages:\nDepth: {self.weighted_depth:.1f}cm\nRate: {self.weighted_rate:.1f}cpm",
-                        xy=(0.98, 0.98), xycoords='axes fraction',
-                        ha='right', va='top', fontsize=10,
-                        bbox=dict(boxstyle='round,pad=0.5', fc='white', ec='black'))
         
         # Configure legend and layout
         handles, labels = ax.get_legend_handles_labels()
@@ -486,31 +488,42 @@ class MetricsCalculator:
         
         return {'y_preprocessed': y_preprocessed[-1]}, end
 
-    def _compute_error_regions(self, sorted_chunks, reporting_interval):
+    def _compute_error_regions(self, sorted_chunks, sampling_interval, reporting_interval):
         error_regions = []
         chunk_boundaries = [chunk[0][0] for chunk in sorted_chunks]
         chunk_boundaries.append(sorted_chunks[-1][0][1])
         
         print("[Plot Graph] Computing error regions:")
-        # Before first chunk
+        
+        # Before first chunk - only report if gap is ≥ sampling_interval
         first_chunk_start = sorted_chunks[0][0][0]
-        if first_chunk_start > 0:
-            print(f" - Pre-chunk region: 0-{first_chunk_start-1}")
+
+
+        if first_chunk_start > 0 and first_chunk_start > sampling_interval:
+            print(f" - Pre-chunk region: 0-{first_chunk_start-1} (length: {first_chunk_start})")
             error_regions.append((0, first_chunk_start - 1))
+        elif first_chunk_start > 0:
+            print(f" - Skipping short pre-chunk region (length: {first_chunk_start} < {sampling_interval})")
         
         # Between chunks
         for i in range(1, len(sorted_chunks)):
             prev_end = sorted_chunks[i-1][0][1]
             curr_start = sorted_chunks[i][0][0]
-            if curr_start - prev_end > reporting_interval + 1:
-                print(f" - Inter-chunk region: {prev_end+1}-{curr_start-1}")
+            gap_length = curr_start - prev_end
+            if gap_length > sampling_interval + 1:
+                print(f" - Inter-chunk region: {prev_end+1}-{curr_start-1} (length: {gap_length-1})")
                 error_regions.append((prev_end + 1, curr_start - 1))
+            elif gap_length > 1:
+                print(f" - Skipping short inter-chunk gap (length: {gap_length-1} ≤ {sampling_interval})")
         
         # After last chunk
         last_end = sorted_chunks[-1][0][1]
-        if last_end < self.frame_count - 1:
-            print(f" - Post-chunk region: {last_end+1}-{self.frame_count-1}")
+        remaining_frames = self.frame_count - 1 - last_end
+        if last_end < self.frame_count - 1 and remaining_frames >= reporting_interval:
+            print(f" - Post-chunk region: {last_end+1}-{self.frame_count-1} (length: {remaining_frames})")
             error_regions.append((last_end + 1, self.frame_count - 1))
+        elif last_end < self.frame_count - 1:
+            print(f" - Skipping short post-chunk region (length: {remaining_frames} < {sampling_interval})")
         
         return [r for r in error_regions if r[1] - r[0] > 0]
 
@@ -548,3 +561,147 @@ class MetricsCalculator:
                 print(f"[Plot Graph] Region {i+1}: Frames {start}-{end} - {error_str}")
             except IndexError:
                 print(f"[Plot Graph] Region {i+1}: Frames {start}-{end} - Error data missing")
+
+#^ ################# Warnings #######################
+
+    def _validate_rate_and_depth_for_chunk(self):
+        """Validate if current chunk's rate/depth are within guidelines
+        
+        Returns:
+            tuple: (depth_valid, rate_valid) 
+                where values can be True/False/"high"
+        """
+        depth_valid = True
+        rate_valid = True
+        
+        # Validate depth
+        if self.depth < self.min_depth_threshold:
+            depth_valid = False
+        elif self.depth > self.max_depth_threshold:
+            depth_valid = "high"
+        
+        # Validate rate
+        if self.rate < self.min_rate_threshold:
+            rate_valid = False
+        elif self.rate > self.max_rate_threshold:
+            rate_valid = "high"
+        
+        return depth_valid, rate_valid
+    
+    def get_rate_and_depth_warnings(self):
+        """Get structured warnings about rate/depth issues
+        
+        Returns:
+            dict: {
+                'warnings': list of active warning messages,
+                'metrics': current depth/rate values,
+                'chunk_info': current chunk frame range
+            }
+        """
+        depth_valid, rate_valid = self._validate_rate_and_depth_for_chunk()
+        
+        warning_config = {
+            "low_depth": {
+                "text": "Depth too low!",
+                "condition": depth_valid is False
+            },
+            "high_depth": {
+                "text": "Depth too high!",
+                "condition": depth_valid == "high"
+            },
+            "low_rate": {
+                "text": "Rate too slow!",
+                "condition": rate_valid is False
+            },
+            "high_rate": {
+                "text": "Rate too fast!",
+                "condition": rate_valid == "high"
+            }
+        }
+        
+        active_warnings = [
+            warning["text"] 
+            for warning in warning_config.values() 
+            if warning["condition"]
+        ]
+        
+        return {
+            'warnings': active_warnings,
+            'metrics': {
+                'depth': self.depth,
+                'rate': self.rate
+            },
+            'chunk_info': {
+                'start_frame': self.current_chunk_start,
+                'end_frame': self.current_chunk_end
+            }
+        }
+
+    def add_rate_and_depth_warning_to_processed_frame(self, frame, warning_data=None):
+        """Add rate/depth warnings to frame using pre-computed warning data
+        
+        Args:
+            frame: Input image frame to draw warnings on
+            warning_data: Optional pre-computed warning data from get_rate_and_depth_warnings()
+            
+        Returns:
+            Frame with warnings drawn
+        """
+        if warning_data is None:
+            warning_data = self.get_rate_and_depth_warnings()
+        
+        # Define visual properties for each warning type (moved left by reducing x-position)
+        warning_visual_config = {
+            "Depth too low!": {
+                "color": (125, 52, 235),  # Purple
+                "position": (50, 250)  
+            },
+            "Depth too high!": {
+                "color": (125, 52, 235),  # Purple
+                "position": (50, 300)    
+            },
+            "Rate too slow!": {
+                "color": (235, 52, 214),  # Yellow
+                "position": (50, 350)    
+            },
+            "Rate too fast!": {
+                "color": (2235, 52, 214),  # Blue
+                "position": (50, 400)  
+            }
+        }
+        
+        # Add warning banners
+        try:
+            for warning in warning_data['warnings']:
+                config = warning_visual_config.get(warning, {})
+                if config:
+                    self._draw_warning_banner(
+                        frame=frame,
+                        text=warning,
+                        color=config["color"],
+                        position=config["position"]
+                    )
+        except Exception as e:
+            print(f"Warning display error: {e}")
+        
+        return frame
+
+    def _draw_warning_banner(self, frame, text, color, position):
+        """Helper function to draw a single warning banner"""
+        (text_width, text_height), _ = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+        
+        x, y = position
+        # Calculate background rectangle coordinates
+        x1 = x - 10
+        y1 = y - text_height - 10
+        x2 = x + text_width + 10
+        y2 = y + 10
+        
+        # Draw background rectangle
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
+        
+        # Draw warning text
+        cv2.putText(frame, text, (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
+                    cv2.LINE_AA)

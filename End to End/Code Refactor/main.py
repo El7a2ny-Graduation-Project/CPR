@@ -69,7 +69,7 @@ class CPRAnalyzer:
 
         #& Workaround for minor glitches
         self.consecutive_frames_with_posture_errors = 0
-        self.max_consecutive_frames_with_posture_errors = 1
+        self.max_consecutive_frames_with_posture_errors = 2 #! CRITICAL Minimum 2 
 
         #& Initialize variables for reporting warnings
         self.posture_errors_for_current_error_region = set()
@@ -80,9 +80,14 @@ class CPRAnalyzer:
         print(f"[INIT] Reporting interval set to {self.reporting_interval_in_seconds} seconds ({self.reporting_interval_in_frames} frames)")
         
 		#& Sampling
-        self.sampling_interval_in_seconds = 0.2
+        self.sampling_interval_in_seconds = 0.1
         self.sampling_interval_in_frames = int(self.fps * self.sampling_interval_in_seconds)
         print(f"[INIT] Sampling interval set to {self.sampling_interval_in_seconds} seconds ({self.sampling_interval_in_frames} frames)")
+
+        #& Display rate and depth warnings
+        self.rate_and_depth_warnings_should_display_duration_in_number_of_frames = 30 # Downsampling considered
+        self.active_rate_and_depth_warnings = None
+        self.rate_and_depth_warnings_counter = 0
 
     def run_analysis(self):
         try:
@@ -136,7 +141,17 @@ class CPRAnalyzer:
                 # The frame would not be displayed yet, just composed.
                 processed_frame = self._compose_frame(frame, accept_frame)
                 print(f"[RUN ANALYSIS] Composed frame")
+
+                if processed_frame is not None:
+                    frame = processed_frame
                 
+                if (self.rate_and_depth_warnings_counter > 0) and accept_frame:
+                    frame = self._add_rate_and_depth_warning_to_processed_frame(frame, self.active_rate_and_depth_warnings)
+
+                    self.rate_and_depth_warnings_counter -= 1
+                    print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented")
+
+
                 #& Set the chunk start frame index for the first chunk
                 # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
                 # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
@@ -157,13 +172,15 @@ class CPRAnalyzer:
                     mini_chunk_start_frame_index = frame_counter
                     print(f"[RUN ANALYSIS] A new chunk is starting")
 
+
                     if len(self.posture_errors_for_current_error_region) > 0:
+
                         self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
                         self.posture_errors_for_current_error_region.clear()
                         print(f"[RUN ANALYSIS] Reset posture errors for current error region")
 
                 #& Process the current chunk or mini chunk if the conditions are met
-                process_chunk = (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk)
+                process_chunk = (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk) and (frame_counter != 0)
                 process_mini_chunk = (frame_counter % self.reporting_interval_in_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk)                     
 
                 if process_chunk: 
@@ -196,11 +213,13 @@ class CPRAnalyzer:
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
 
+                    self.rate_and_depth_warnings_counter = self.rate_and_depth_warnings_should_display_duration_in_number_of_frames
+                    print(f"[RUN ANALYSIS] Rate and depth warnings counter set")
+
+                    print(f"[RUN ANALYSIS] Added rate and depth warning to processed frame")
+
                 #& Display frame
-                if processed_frame is not None:
-                    self._display_frame(processed_frame)
-                else:
-                    self._display_frame(frame)
+                self._display_frame(frame)
                 print(f"[RUN ANALYSIS] Displayed frame")
                                 
                 #& Check if the user wants to quit
@@ -363,13 +382,14 @@ class CPRAnalyzer:
             num_warnings_before = len(self.posture_errors_for_current_error_region)
 
             for warning in warnings:
+                
                 self.posture_errors_for_current_error_region.add(warning)
                 
                 num_warnings_after = len(self.posture_errors_for_current_error_region)
                 
                 if num_warnings_after > num_warnings_before:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
-    
+
         return is_complete_chunk, accept_frame
     
     def _compose_frame(self, frame, accept_frame):
@@ -442,6 +462,12 @@ class CPRAnalyzer:
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
   
+    def _add_rate_and_depth_warning_to_processed_frame(self, frame, warning_data=None):
+        self.metrics_calculator.add_rate_and_depth_warning_to_processed_frame(frame, warning_data)
+        print(f"[VISUALIZATION] Added rate and depth warning to processed frame")
+        return frame
+
+
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
