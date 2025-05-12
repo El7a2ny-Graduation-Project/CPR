@@ -165,8 +165,13 @@ class CPRAnalyzer:
                 print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}]")
                 
 				#& Check if you want to skip the frame
-                if frame_counter % self.sampling_interval_frames != 0:
-                    print(f"[SKIP FRAME] Skipping frame {int(frame_counter)}")
+                if frame_counter % self.sampling_interval_frames != 0:    
+                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                    # Return the cashed warnings
+                    formatted_warnings = self._format_warnings()
+                    print(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
+                    
+                    print(f"[SKIP FRAME] Skipping frame {int(frame_counter)}") 
                     continue
                 
                 #& Retrieve and process frame

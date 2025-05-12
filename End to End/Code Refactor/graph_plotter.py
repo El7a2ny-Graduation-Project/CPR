@@ -125,7 +125,7 @@ class GraphPlotter:
                     label=peaks_label)
 
         # Annotate chunk metrics (time-based)
-        if depth is not None and rate is not None:
+        if (depth is not None and rate is not None) and (depth > 0 and rate > 0):
             mid_time = (start_frame + end_frame) / (2 * self.fps)
             print(f"[Graph Plotter] Chunk {idx+1} metrics: {depth:.1f}cm depth, {rate:.1f}cpm rate")
             ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
@@ -153,12 +153,20 @@ class GraphPlotter:
     
     def _print_analysis_details(self, sorted_chunks):
         """Combined helper for printing chunks and error regions"""
+
         print(f"\n\n=== CPR Chunk Analysis ===")
-        for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
+        display_idx = 0  # Separate counter for displayed indices
+        for ((start, end), depth, rate) in sorted_chunks:
+            # Skip chunks with both values at 0
+            if depth == 0 and rate == 0:
+                continue
+                
             duration = end - start + 1
-            print(f"[Graph Plotter] Chunk {idx+1}: "
-                  f"Frames {start}-{end} ({duration} frames), "
-                  f"Depth: {depth:.1f}cm, Rate: {rate:.1f}cpm")
+            print(f"[Graph Plotter] Chunk {display_idx+1}: "
+                f"Frames {start}-{end} ({duration} frames), "
+                f"Depth: {depth:.1f}cm, Rate: {rate:.1f}cpm")
+            
+            display_idx += 1  # Only increment counter for displayed entries
 
         print(f"\n\n=== Error Region Analysis ===")
         for i, region in enumerate(self.error_regions):

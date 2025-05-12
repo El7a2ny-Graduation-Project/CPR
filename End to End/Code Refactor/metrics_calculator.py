@@ -404,13 +404,13 @@ class MetricsCalculator:
 
         depth_status = "normal"
         rate_status  = "normal"
-
-        if self.depth < self.min_depth_threshold:
+        
+        if self.depth < self.min_depth_threshold and self.depth > 0:
             depth_status = "low"
         elif self.depth > self.max_depth_threshold:
             depth_status = "high"
             
-        if self.rate < self.min_rate_threshold:
+        if self.rate < self.min_rate_threshold and self.rate > 0:
             rate_status = "low"
         elif self.rate > self.max_rate_threshold:
             rate_status = "high"
