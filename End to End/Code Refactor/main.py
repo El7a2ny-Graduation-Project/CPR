@@ -14,6 +14,7 @@ from metrics_calculator import MetricsCalculator
 from posture_analyzer import PostureAnalyzer
 from wrists_midpoint_analyzer import WristsMidpointAnalyzer
 from shoulders_analyzer import ShouldersAnalyzer
+from graph_plotter import GraphPlotter
 
 class CPRAnalyzer:
     """Main CPR analysis pipeline with execution tracing"""
@@ -53,6 +54,7 @@ class CPRAnalyzer:
         self.posture_analyzer = PostureAnalyzer(right_arm_angle_threshold=220, left_arm_angle_threshold=160, wrist_distance_threshold=170, history_length_to_average=10)
         self.wrists_midpoint_analyzer = WristsMidpointAnalyzer()
         self.shoulders_analyzer = ShouldersAnalyzer()
+        self.graph_plotter = GraphPlotter()
         print("[INIT] System components initialized")
         
         #& Configure display window
@@ -77,7 +79,7 @@ class CPRAnalyzer:
         #& Fundamental timing parameters (in seconds)
         self.MIN_ERROR_DURATION = 1.0    # Require sustained errors for 1 second
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
-        self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
+        self.SAMPLING_INTERVAL = 0.1     # Analyze every 0.2 seconds
 
         # Derived frame counts (calculated once during initialization)
         self.sampling_interval_frames = int(round(self.fps * self.SAMPLING_INTERVAL))
@@ -116,11 +118,15 @@ class CPRAnalyzer:
             main_loop_start_time = time.time()
 
             #& Initialize Variables
-            # Handling chunks
+            # Handling chunks & mini chunks
             first_time_to_have_a_proccessed_frame = True
             waiting_to_start_new_chunk = False
-            # Hndling mini chunks
+
+            chunk_start_frame_index = 0
+            chunk_end_frame_index = 0
+
             mini_chunk_start_frame_index = None
+            mini_chunk_end_frame_index = 0
 
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
@@ -171,6 +177,10 @@ class CPRAnalyzer:
                     self.rate_and_depth_warnings_counter -= 1
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented")
 
+                if (self.rate_and_depth_warnings_counter > 0) and not accept_frame:
+                    self.rate_and_depth_warnings_counter = 0
+                    print(f"[RUN ANALYSIS] Rate and depth warnings counter reset")
+
                 #& Set the chunk start frame index for the first chunk
                 # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
                 # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
@@ -192,6 +202,8 @@ class CPRAnalyzer:
                     print(f"[RUN ANALYSIS] A new chunk is starting")
 
                     if len(self.posture_errors_for_current_error_region) > 0:
+                        print(f"[RUN ANALYSIS] Posture errors detected in the error region before this chunk")
+
                         error_region_start = max(chunk_end_frame_index, mini_chunk_end_frame_index) + 1
                         error_region_end = frame_counter - 1
                         
@@ -199,13 +211,18 @@ class CPRAnalyzer:
                             error_region_start,
                             error_region_end,
                             self.posture_errors_for_current_error_region
-        )
+                        )
+                        print(f"[RUN ANALYSIS] Assigned error region data")
+
                         self.posture_errors_for_current_error_region.clear()
+
                         print(f"[RUN ANALYSIS] Reset posture errors for current error region")
 
                 #& Process the current chunk or mini chunk if the conditions are met
                 process_chunk = (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk) and (frame_counter != 0)
-                process_mini_chunk = (frame_counter % self.reporting_interval_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk)                     
+                process_mini_chunk = (frame_counter % self.reporting_interval_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk) 
+                print(f"[RUN ANALYSIS] Process chunk: {process_chunk}, Process mini chunk: {process_mini_chunk}")    
+                print(f"[RUN ANALYSIS] frame_counter: {frame_counter}, reporting_interval_frames: {self.reporting_interval_frames}, mini_chunk_start_frame_index: {mini_chunk_start_frame_index}, is_complete_chunk: {is_complete_chunk}")                
 
                 if process_chunk: 
                     print(f"[RUN ANALYSIS] Chunk completion detected")
@@ -242,7 +259,7 @@ class CPRAnalyzer:
 
                     print(f"[RUN ANALYSIS] Added rate and depth warning to processed frame")
 
-                #& Display frame
+                #& Display 
                 self._display_frame(frame)
                 print(f"[RUN ANALYSIS] Displayed frame")
                                 
@@ -481,21 +498,38 @@ class CPRAnalyzer:
             
     def _plot_full_motion_curve_for_all_chunks(self):
         try:
-            self.metrics_calculator.plot_motion_curve_for_all_chunks(self.posture_analyzer.error_regions, self.sampling_interval_frames, self.reporting_interval_frames)
+            self.graph_plotter.plot_motion_curve_for_all_chunks(self.metrics_calculator.chunks_y_preprocessed, 
+                                                  self.metrics_calculator.chunks_peaks, 
+                                                  self.metrics_calculator.chunks_depth, 
+                                                  self.metrics_calculator.chunks_rate, 
+                                                  self.metrics_calculator.chunks_start_and_end_indices, 
+                                                  self.posture_analyzer.error_regions, 
+                                                  self.sampling_interval_frames)
             print("[PLOT] Full motion curve plotted")
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
   
     def _add_rate_and_depth_warning_to_processed_frame(self, frame, warning_data=None):
-        self.metrics_calculator.add_rate_and_depth_warning_to_processed_frame(frame, warning_data)
-        print(f"[VISUALIZATION] Added rate and depth warning to processed frame")
-        return frame
 
+        warning_data = self.metrics_calculator.get_rate_and_depth_warnings()
+        print(f"[VISUALIZATION] Rate and depth warnings data: {warning_data}")
+
+        if warning_data is None:
+            print("[VISUALIZATION] No rate and depth warnings to display")
+            return frame
+        
+        processed_frame = self.metrics_calculator.draw_rate_and_depth_warnings(frame, warning_data)
+        if processed_frame is None:
+            print("[VISUALIZATION] Failed to draw rate and depth warnings")
+            return frame
+
+        print(f"[VISUALIZATION] Added rate and depth warning to processed frame")
+        return processed_frame
 
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\1.mp4"
     
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
