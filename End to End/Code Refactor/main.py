@@ -7,6 +7,7 @@ import math
 import sys
 import numpy as np
 import os  # Added for path handling
+import select
 
 from pose_estimation import PoseEstimator
 from role_classifier import RoleClassifier
@@ -41,13 +42,6 @@ class CPRAnalyzer:
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         print(f"[INIT] Video has {self.frame_count} frames at {self.fps:.2f} FPS")
-
-        #! #& Get screen dimensions
-        #! root = tk.Tk()
-        #! self.screen_width = root.winfo_screenwidth()
-        #! self.screen_height = root.winfo_screenheight()
-        #! root.destroy()
-        #! print(f"[INIT] Detected screen resolution: {self.screen_width}x{self.screen_height}")
         
         #& Initialize system components
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
@@ -64,11 +58,6 @@ class CPRAnalyzer:
         self.shoulders_analyzer = ShouldersAnalyzer()
         self.graph_plotter = GraphPlotter()
         print("[INIT] System components initialized")
-        
-        #! #& Configure display window
-        #! self.window_name = "CPR Analysis"
-        #! cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        #! print(f"[INIT] Window '{self.window_name}' created")
 
         #& Keep track of previous results for continuity
         self.prev_rescuer_processed_results = None
@@ -109,7 +98,7 @@ class CPRAnalyzer:
         print(f" - {self.REPORTING_INTERVAL}s reporting → {self.reporting_interval_frames} samples")
 
         #& Warning display parameters
-        self.active_rate_and_depth_warnings = None
+        self.active_rate_and_depth_warnings = []
         self.rate_and_depth_warnings_counter = 0
         
         # Calculate display duration based on reporting interval (now frame-rate agnostic)
@@ -161,6 +150,8 @@ class CPRAnalyzer:
             mini_chunk_start_frame_index = None
             mini_chunk_end_frame_index = 0
 
+            warnings_rate_and_depth = []
+
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
             while self.cap.isOpened():
@@ -193,7 +184,7 @@ class CPRAnalyzer:
                 # - accept_frame: True if the frame is accepted for further processing, False otherwise.
                 # Not that a frame containing an error could be accepted if the number of consecutive frames with errors is less than the threshold.
                 #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                is_complete_chunk, accept_frame, warnings_posture = self._process_frame(frame)
+                is_complete_chunk, accept_frame = self._process_frame(frame)
                 print(f"[RUN ANALYSIS] Processed frame")
                 
                 #& Compose frame
@@ -207,14 +198,19 @@ class CPRAnalyzer:
                 
                 if (self.rate_and_depth_warnings_counter > 0) and accept_frame:
                     #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                    frame, warnings_rate_and_depth = self._add_rate_and_depth_warning_to_processed_frame(frame, self.active_rate_and_depth_warnings)
+                    frame = self._add_rate_and_depth_warning_to_processed_frame(frame)
 
                     self.rate_and_depth_warnings_counter -= 1
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented")
 
                 if (self.rate_and_depth_warnings_counter > 0) and not accept_frame:
+                    self.active_rate_and_depth_warnings = []
                     self.rate_and_depth_warnings_counter = 0
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter reset")
+
+                if self.rate_and_depth_warnings_counter == 0:
+                    self.active_rate_and_depth_warnings = []
+                    print(f"[RUN ANALYSIS] No rate and depth warnings to display")
 
                 #& Set the chunk start frame index for the first chunk
                 # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
@@ -292,11 +288,6 @@ class CPRAnalyzer:
 
                     print(f"[RUN ANALYSIS] Added rate and depth warning to processed frame")
 
-                #& Display 
-                #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #! self._display_frame(frame)
-                # print(f"[RUN ANALYSIS] Displayed frame")
-
                 #& Initialize video writer if not done yet
                 if frame is not None and not self._writer_initialized:
                     self._initialize_video_writer(frame)
@@ -315,10 +306,14 @@ class CPRAnalyzer:
                     except Exception as e:
                         print(f"[WRITE ERROR] {str(e)}")
                         self._writer_initialized = False
+                
+                #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                formatted_warnings = self._format_warnings()
+                print(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
                                 
                 #& Check if the user wants to quit
-                if cv2.waitKey(1) == ord('q'):
-                    print("\n[RUN ANALYSIS] Analysis interrupted by user")
+                if self._check_exit():
+                    print("\n[RUN ANALYSIS] Analysis stopped by user")
                     break
 
             main_loop_end_time = time.time()
@@ -349,6 +344,25 @@ class CPRAnalyzer:
             report_and_plot_elapsed_time = report_and_plot_end_time - report_and_plot_start_time
             print(f"[TIMING] Report and plot elapsed time: {report_and_plot_elapsed_time:.2f}s")
 
+    def _check_exit(self):
+        try:
+            # Windows version (any key)
+            import msvcrt
+            return msvcrt.kbhit()
+        except ImportError:
+            # Unix version (needs ENTER)
+            return sys.stdin in select.select([sys.stdin], [], [], 0)[0]
+
+    def _format_warnings(self):
+        """Combine warnings into a simple structured response"""
+        #! Imagine an error region with 5 seconds of hands not on chest followed by 5 seconds of left arm bent.
+        #! The second 5 second with report both errors.
+        return {
+            "status": "warning" if any([self.posture_errors_for_current_error_region, self.active_rate_and_depth_warnings]) else "ok",
+            "posture_warnings": list(self.posture_errors_for_current_error_region),
+            "rate_and_depth_warnings": self.active_rate_and_depth_warnings,
+        }
+
     def _handle_frame_rotation(self, frame):
         #! Till now, the code has only been testes on portrait videos.
         if frame.shape[1] > frame.shape[0]:  # Width > Height
@@ -375,7 +389,7 @@ class CPRAnalyzer:
         
         if not pose_results:
             print("[POSE ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame
         
         #& Rescuer and Patient Classification
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
@@ -395,7 +409,7 @@ class CPRAnalyzer:
         
         if not rescuer_processed_results or not patient_processed_results:
             print("[ROLE CLASSIFICATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
@@ -414,7 +428,7 @@ class CPRAnalyzer:
 
         if not chest_params:
             print("[CHEST ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
@@ -462,7 +476,7 @@ class CPRAnalyzer:
         
         if not midpoint:
             print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame
 
         if accept_frame:
             #^ Set Params in Role Classifier (to draw later)
@@ -490,7 +504,7 @@ class CPRAnalyzer:
                 if num_warnings_after > num_warnings_before:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
 
-        return is_complete_chunk, accept_frame, warnings
+        return is_complete_chunk, accept_frame
     
     def _compose_frame(self, frame, accept_frame):
         # Chest Region
@@ -510,33 +524,6 @@ class CPRAnalyzer:
                 print(f"[VISUALIZATION] Drawn midpoint")  
         
         return frame
-
-    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-    #! def _display_frame(self, frame):        
-    #!     # Get original frame dimensions
-    #!     h, w = frame.shape[:2]
-    #!     if w == 0 or h == 0:
-    #!         return
-    #! 
-    #!     # Calculate maximum possible scale while maintaining aspect ratio
-    #!     scale_w = self.screen_width / w
-    #!     scale_h = self.screen_height / h
-    #!     scale = min(scale_w, scale_h) * 0.9  # 90% of max to leave some margin
-    #! 
-    #!     # Calculate new dimensions
-    #!     new_w = int(w * scale)
-    #!     new_h = int(h * scale)
-    #! 
-    #!     # Resize and display
-    #!     resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-    #!     
-    #!     # Center window
-    #!     pos_x = (self.screen_width - new_w) // 2
-    #!     pos_y = (self.screen_height - new_h) // 2
-    #!     cv2.moveWindow(self.window_name, pos_x, pos_y)
-    #!     
-    #!     cv2.imshow(self.window_name, resized)
-    #!     print(f"[DISPLAY FRAME] Resized to {new_w}x{new_h} (scale: {scale:.2f})")
 
     def _calculate_rate_and_depth_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
         try:
@@ -570,22 +557,22 @@ class CPRAnalyzer:
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
   
-    def _add_rate_and_depth_warning_to_processed_frame(self, frame, warning_data=None):
+    def _add_rate_and_depth_warning_to_processed_frame(self, frame):
 
-        warning_data = self.metrics_calculator.get_rate_and_depth_warnings()
-        print(f"[VISUALIZATION] Rate and depth warnings data: {warning_data}")
+        self.active_rate_and_depth_warnings = self.metrics_calculator.get_rate_and_depth_warnings()
+        print(f"[VISUALIZATION] Rate and depth warnings data: {self.active_rate_and_depth_warnings}")
 
-        if warning_data is None:
+        if self.active_rate_and_depth_warnings is None:
             print("[VISUALIZATION] No rate and depth warnings to display")
-            return frame, warning_data
+            return frame
         
-        processed_frame = self.metrics_calculator.draw_rate_and_depth_warnings(frame, warning_data)
+        processed_frame = self.metrics_calculator.draw_rate_and_depth_warnings(frame, self.active_rate_and_depth_warnings)
         if processed_frame is None:
             print("[VISUALIZATION] Failed to draw rate and depth warnings")
-            return frame, warning_data
+            return frame
 
         print(f"[VISUALIZATION] Added rate and depth warning to processed frame")
-        return processed_frame, warning_data
+        return processed_frame
 
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
