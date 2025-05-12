@@ -6,6 +6,7 @@ from datetime import datetime
 import math
 import sys
 import numpy as np
+import os  # Added for path handling
 
 from pose_estimation import PoseEstimator
 from role_classifier import RoleClassifier
@@ -28,6 +29,14 @@ class CPRAnalyzer:
             print("[ERROR] Failed to open video file")
             return
         print("[INIT] Video file opened successfully")
+
+        #& Generate output path with MP4 extension
+        self.base = os.path.splitext(video_path)[0]
+        self.output_video_path = os.path.abspath(f"{self.base}_processed.mp4")
+        self.video_writer = None
+        self._writer_initialized = False
+        print(f"[VIDEO WRITER] Output path: {self.output_video_path}")
+
 
         #& Get video properties
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -111,6 +120,31 @@ class CPRAnalyzer:
         print(f"[INIT] Warning display duration: {self.rate_and_depth_warnings_display_duration} samples "
             f"({self.rate_and_depth_warnings_display_duration * self.SAMPLING_INTERVAL:.1f}s)")
 
+    def _initialize_video_writer(self, frame):
+        """Initialize writer with safe fallback options"""
+        height, width = frame.shape[:2]
+        effective_fps = self.fps / max(1, self.sampling_interval_frames)
+        
+        # Try different codec/container combinations
+        for codec, ext, fmt in [('avc1', 'mp4', 'mp4v'),  # H.264
+                                ('MJPG', 'avi', 'avi'), 
+                                ('XVID', 'avi', 'avi')]:
+            test_path = os.path.abspath(f"{self.base}_processed.{ext}")
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            writer = cv2.VideoWriter(test_path, fourcc, effective_fps, (width, height))
+            
+            if writer.isOpened():
+                self.output_video_path = test_path
+                self.video_writer = writer
+                self._writer_initialized = True
+                print(f"[VIDEO WRITER] Initialized with {codec} codec")
+                return
+            else:
+                writer.release()
+        
+        print("[ERROR] Failed to initialize any video writer!")
+        self._writer_initialized = False
+
     def run_analysis(self):
         try:
             print("\n[RUN ANALYSIS] Starting analysis")
@@ -159,7 +193,8 @@ class CPRAnalyzer:
                 # - is_complete_chunk: True if a "Posture Error" occurs in the frame, False otherwise.
                 # - accept_frame: True if the frame is accepted for further processing, False otherwise.
                 # Not that a frame containing an error could be accepted if the number of consecutive frames with errors is less than the threshold.
-                is_complete_chunk, accept_frame = self._process_frame(frame)
+                #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                is_complete_chunk, accept_frame, warnings_posture = self._process_frame(frame)
                 print(f"[RUN ANALYSIS] Processed frame")
                 
                 #& Compose frame
@@ -172,7 +207,8 @@ class CPRAnalyzer:
                     frame = processed_frame
                 
                 if (self.rate_and_depth_warnings_counter > 0) and accept_frame:
-                    frame = self._add_rate_and_depth_warning_to_processed_frame(frame, self.active_rate_and_depth_warnings)
+                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                    frame, warnings_rate_and_depth = self._add_rate_and_depth_warning_to_processed_frame(frame, self.active_rate_and_depth_warnings)
 
                     self.rate_and_depth_warnings_counter -= 1
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented")
@@ -258,8 +294,28 @@ class CPRAnalyzer:
                     print(f"[RUN ANALYSIS] Added rate and depth warning to processed frame")
 
                 #& Display 
+                #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                 self._display_frame(frame)
                 print(f"[RUN ANALYSIS] Displayed frame")
+
+                #& Initialize video writer if not done yet
+                if frame is not None and not self._writer_initialized:
+                    self._initialize_video_writer(frame)
+                    print(f"[VIDEO WRITER] Initialized video writer")
+
+                #& Write frame if writer is functional
+                if self._writer_initialized:
+                    # Convert frame to BGR if needed
+                    if frame.dtype != np.uint8:
+                        frame = frame.astype(np.uint8)
+                    if len(frame.shape) == 2:  # Grayscale
+                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                    
+                    try:
+                        self.video_writer.write(frame)
+                    except Exception as e:
+                        print(f"[WRITE ERROR] {str(e)}")
+                        self._writer_initialized = False
                                 
                 #& Check if the user wants to quit
                 if cv2.waitKey(1) == ord('q'):
@@ -278,6 +334,9 @@ class CPRAnalyzer:
 
             #& Cleanup, calculate averages, and plot full motion curve
             self.cap.release()
+            if self.video_writer is not None:
+                self.video_writer.release()
+                print(f"[VIDEO WRITER] Released writer. File should be at: {os.path.abspath(self.output_video_path)}")
             cv2.destroyAllWindows()
             print("[RUN ANALYSIS] Released video capture and destroyed all windows")         
 
@@ -298,6 +357,9 @@ class CPRAnalyzer:
         return frame
 
     def _process_frame(self, frame):
+        #* Warnings for real time feedback
+        warnings = []
+
         #* Chunk Completion Check
         is_complete_chunk = False
         accept_frame = True
@@ -314,7 +376,7 @@ class CPRAnalyzer:
         
         if not pose_results:
             print("[POSE ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
         
         #& Rescuer and Patient Classification
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
@@ -334,7 +396,7 @@ class CPRAnalyzer:
         
         if not rescuer_processed_results or not patient_processed_results:
             print("[ROLE CLASSIFICATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
@@ -353,7 +415,7 @@ class CPRAnalyzer:
 
         if not chest_params:
             print("[CHEST ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
@@ -401,7 +463,7 @@ class CPRAnalyzer:
         
         if not midpoint:
             print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
 
         if accept_frame:
             #^ Set Params in Role Classifier (to draw later)
@@ -429,7 +491,7 @@ class CPRAnalyzer:
                 if num_warnings_after > num_warnings_before:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
 
-        return is_complete_chunk, accept_frame
+        return is_complete_chunk, accept_frame, warnings
     
     def _compose_frame(self, frame, accept_frame):
         # Chest Region
@@ -450,6 +512,7 @@ class CPRAnalyzer:
         
         return frame
 
+    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     def _display_frame(self, frame):        
         # Get original frame dimensions
         h, w = frame.shape[:2]
@@ -515,15 +578,15 @@ class CPRAnalyzer:
 
         if warning_data is None:
             print("[VISUALIZATION] No rate and depth warnings to display")
-            return frame
+            return frame, warning_data
         
         processed_frame = self.metrics_calculator.draw_rate_and_depth_warnings(frame, warning_data)
         if processed_frame is None:
             print("[VISUALIZATION] Failed to draw rate and depth warnings")
-            return frame
+            return frame, warning_data
 
         print(f"[VISUALIZATION] Added rate and depth warning to processed frame")
-        return processed_frame
+        return processed_frame, warning_data
 
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
