@@ -37,18 +37,17 @@ class CPRAnalyzer:
         self._writer_initialized = False
         print(f"[VIDEO WRITER] Output path: {self.output_video_path}")
 
-
         #& Get video properties
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         print(f"[INIT] Video has {self.frame_count} frames at {self.fps:.2f} FPS")
 
-        #& Get screen dimensions
-        root = tk.Tk()
-        self.screen_width = root.winfo_screenwidth()
-        self.screen_height = root.winfo_screenheight()
-        root.destroy()
-        print(f"[INIT] Detected screen resolution: {self.screen_width}x{self.screen_height}")
+        #! #& Get screen dimensions
+        #! root = tk.Tk()
+        #! self.screen_width = root.winfo_screenwidth()
+        #! self.screen_height = root.winfo_screenheight()
+        #! root.destroy()
+        #! print(f"[INIT] Detected screen resolution: {self.screen_width}x{self.screen_height}")
         
         #& Initialize system components
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
@@ -66,10 +65,10 @@ class CPRAnalyzer:
         self.graph_plotter = GraphPlotter()
         print("[INIT] System components initialized")
         
-        #& Configure display window
-        self.window_name = "CPR Analysis"
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        print(f"[INIT] Window '{self.window_name}' created")
+        #! #& Configure display window
+        #! self.window_name = "CPR Analysis"
+        #! cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        #! print(f"[INIT] Window '{self.window_name}' created")
 
         #& Keep track of previous results for continuity
         self.prev_rescuer_processed_results = None
@@ -88,7 +87,7 @@ class CPRAnalyzer:
         #& Fundamental timing parameters (in seconds)
         self.MIN_ERROR_DURATION = 1.0    # Require sustained errors for 1 second
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
-        self.SAMPLING_INTERVAL = 0.1     # Analyze every 0.2 seconds
+        self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
 
         # Derived frame counts (calculated once during initialization)
         self.sampling_interval_frames = int(round(self.fps * self.SAMPLING_INTERVAL))
@@ -295,8 +294,8 @@ class CPRAnalyzer:
 
                 #& Display 
                 #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                self._display_frame(frame)
-                print(f"[RUN ANALYSIS] Displayed frame")
+                #! self._display_frame(frame)
+                # print(f"[RUN ANALYSIS] Displayed frame")
 
                 #& Initialize video writer if not done yet
                 if frame is not None and not self._writer_initialized:
@@ -513,31 +512,31 @@ class CPRAnalyzer:
         return frame
 
     #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-    def _display_frame(self, frame):        
-        # Get original frame dimensions
-        h, w = frame.shape[:2]
-        if w == 0 or h == 0:
-            return
-
-        # Calculate maximum possible scale while maintaining aspect ratio
-        scale_w = self.screen_width / w
-        scale_h = self.screen_height / h
-        scale = min(scale_w, scale_h) * 0.9  # 90% of max to leave some margin
-
-        # Calculate new dimensions
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
-        # Resize and display
-        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        
-        # Center window
-        pos_x = (self.screen_width - new_w) // 2
-        pos_y = (self.screen_height - new_h) // 2
-        cv2.moveWindow(self.window_name, pos_x, pos_y)
-        
-        cv2.imshow(self.window_name, resized)
-        print(f"[DISPLAY FRAME] Resized to {new_w}x{new_h} (scale: {scale:.2f})")
+    #! def _display_frame(self, frame):        
+    #!     # Get original frame dimensions
+    #!     h, w = frame.shape[:2]
+    #!     if w == 0 or h == 0:
+    #!         return
+    #! 
+    #!     # Calculate maximum possible scale while maintaining aspect ratio
+    #!     scale_w = self.screen_width / w
+    #!     scale_h = self.screen_height / h
+    #!     scale = min(scale_w, scale_h) * 0.9  # 90% of max to leave some margin
+    #! 
+    #!     # Calculate new dimensions
+    #!     new_w = int(w * scale)
+    #!     new_h = int(h * scale)
+    #! 
+    #!     # Resize and display
+    #!     resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    #!     
+    #!     # Center window
+    #!     pos_x = (self.screen_width - new_w) // 2
+    #!     pos_y = (self.screen_height - new_h) // 2
+    #!     cv2.moveWindow(self.window_name, pos_x, pos_y)
+    #!     
+    #!     cv2.imshow(self.window_name, resized)
+    #!     print(f"[DISPLAY FRAME] Resized to {new_w}x{new_h} (scale: {scale:.2f})")
 
     def _calculate_rate_and_depth_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
         try:
@@ -591,7 +590,7 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
     
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)
