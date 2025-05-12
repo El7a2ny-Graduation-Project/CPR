@@ -106,7 +106,7 @@ class CPRAnalyzer:
         
         # Calculate display duration based on reporting interval (now frame-rate agnostic)
         self.rate_and_depth_warnings_display_duration = \
-            int(self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL)  # Auto-calculate based on timing params
+            int((self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL / 2))  # Auto-calculate based on timing params
         
         print(f"[INIT] Warning display duration: {self.rate_and_depth_warnings_display_duration} samples "
             f"({self.rate_and_depth_warnings_display_duration * self.SAMPLING_INTERVAL:.1f}s)")
@@ -221,9 +221,7 @@ class CPRAnalyzer:
                 #& Process the current chunk or mini chunk if the conditions are met
                 process_chunk = (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk) and (frame_counter != 0)
                 process_mini_chunk = (frame_counter % self.reporting_interval_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk) 
-                print(f"[RUN ANALYSIS] Process chunk: {process_chunk}, Process mini chunk: {process_mini_chunk}")    
-                print(f"[RUN ANALYSIS] frame_counter: {frame_counter}, reporting_interval_frames: {self.reporting_interval_frames}, mini_chunk_start_frame_index: {mini_chunk_start_frame_index}, is_complete_chunk: {is_complete_chunk}")                
-
+               
                 if process_chunk: 
                     print(f"[RUN ANALYSIS] Chunk completion detected")
 
@@ -504,7 +502,8 @@ class CPRAnalyzer:
                                                   self.metrics_calculator.chunks_rate, 
                                                   self.metrics_calculator.chunks_start_and_end_indices, 
                                                   self.posture_analyzer.error_regions, 
-                                                  self.sampling_interval_frames)
+                                                  self.sampling_interval_frames,
+                                                  self.fps)
             print("[PLOT] Full motion curve plotted")
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
@@ -529,7 +528,7 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
 
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\1.mp4"
+    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
     
     initialization_start_time = time.time()
     analyzer = CPRAnalyzer(video_path)

@@ -14,8 +14,9 @@ class GraphPlotter:
         self.chunks_start_and_end_indices = []
         self.error_regions = []
         self.sampling_interval_in_frames = 0
+        self.fps = None  # Added FPS attribute
 
-    def _assign_graph_data(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames):
+    def _assign_graph_data(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps):
         """Assign data members for the class"""
         self.chunks_y_preprocessed = chunks_y_preprocessed
         self.chunks_peaks = chunks_peaks
@@ -24,13 +25,14 @@ class GraphPlotter:
         self.chunks_start_and_end_indices = chunks_start_and_end_indices
         self.error_regions = error_regions
         self.sampling_interval_in_frames = sampling_interval_in_frames
+        self.fps = fps  # Store FPS
 
-        print(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.error_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames")
+        print(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.error_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames and FPS {self.fps}")
 
-    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames):
+    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps):
         """Plot combined analysis with connected chunks and proper error regions"""
         
-        self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames)
+        self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps)
         print("[Graph Plotter] Starting to plot motion curve for all chunks")
         
         if not self.chunks_start_and_end_indices:
@@ -56,8 +58,8 @@ class GraphPlotter:
             print(f"[Graph Plotter] Rendering chunk {idx+1}/{len(sorted_chunks)}")
             prev_last_point, prev_chunk_end = self._plot_single_chunk(ax, chunk, idx, prev_last_point, prev_chunk_end)
         
-        # Convert error regions to frame tuples for plotting
-        computed_error_regions = [(er['start_frame'], er['end_frame']) for er in self.error_regions]
+        # Convert error regions to time tuples for plotting
+        computed_error_regions = [(er['start_frame']/self.fps, er['end_frame']/self.fps) for er in self.error_regions]
         print(f"[Graph Plotter] Received {len(self.error_regions)} error regions")
         
         self._print_analysis_details(sorted_chunks)
@@ -68,7 +70,7 @@ class GraphPlotter:
         unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
         ax.legend(*zip(*unique), loc='upper right')
 
-        plt.xlabel("Frame Number")
+        plt.xlabel("Time (seconds)")  # Updated label
         plt.ylabel("Vertical Position (px)")
         plt.title("Complete CPR Analysis with Metrics")
         plt.grid(True)
@@ -78,35 +80,39 @@ class GraphPlotter:
         print("[Graph Plotter] Plot display complete")
 
     def _plot_single_chunk(self, ax, chunk, idx, prev_last_point, prev_chunk_end):
-        (start, end), depth, rate = chunk
-        chunk_frames = np.arange(start, end + 1, self.sampling_interval_in_frames)
+        (start_frame, end_frame), depth, rate = chunk
+        # Convert frames to time
+        chunk_frames = np.arange(start_frame, end_frame + 1, self.sampling_interval_in_frames)
+        chunk_times = chunk_frames / self.fps  # Convert to seconds
         y_preprocessed = self.chunks_y_preprocessed[idx]
         peaks = self.chunks_peaks[idx]
         
-        # Add separator line between chunks
+        # Add separator line between chunks (in seconds)
         if prev_chunk_end is not None:
-            separator_x = prev_chunk_end + 0.5
-            print(f"[Graph Plotter] Adding chunk separator at frame {separator_x}")
+            separator_x = (prev_chunk_end + 0.5) / self.fps
+            print(f"[Graph Plotter] Adding chunk separator at {separator_x:.2f} seconds")
             ax.axvline(x=separator_x, color='orange', linestyle=':', linewidth=1.5)
         
-        # Check if chunks are contiguous and need connection
+        # Check if chunks are contiguous and need connection (frame-based logic)
         if (prev_chunk_end is not None and 
-            start == prev_chunk_end + self.sampling_interval_in_frames and
+            start_frame == prev_chunk_end + self.sampling_interval_in_frames and
             prev_last_point is not None):
             
-            connect_frames = [prev_chunk_end, start]
-            connect_y_preprocessed = np.vstack([prev_last_point['y_preprocessed'], y_preprocessed[0]])
+            # Convert connection points to seconds
+            connect_start = prev_chunk_end / self.fps
+            connect_end = start_frame / self.fps
+            connect_times = [connect_start, connect_end]
             
-            print(f"[Graph Plotter] Connecting chunk {idx+1} to previous chunk (frames {prev_chunk_end}-{start})")
-            ax.plot(connect_frames, connect_y_preprocessed, 
+            print(f"[Graph Plotter] Connecting chunk {idx+1} to previous chunk (time {connect_start:.2f}-{connect_end:.2f}s)")
+            ax.plot(connect_times, [prev_last_point['y_preprocessed'], y_preprocessed[0]], 
                     color="blue", linewidth=2)
         
         # Plot current chunk data
-        print(f"[Graph Plotter] Plotting chunk {idx+1} (frames {start}-{end}) with {len(peaks)} peaks")
+        print(f"[Graph Plotter] Plotting chunk {idx+1} (time {chunk_times[0]:.2f}-{chunk_times[-1]:.2f}s)")
         smooth_label = "Motion" if idx == 0 else ""
         peaks_label = "Peaks" if idx == 0 else ""
 
-        ax.plot(chunk_frames, y_preprocessed,
+        ax.plot(chunk_times, y_preprocessed,
                 color="blue", linewidth=2,
                 marker='o', markersize=4,
                 markerfacecolor='blue', markeredgecolor='blue',
@@ -114,50 +120,52 @@ class GraphPlotter:
         
         # Plot peaks
         if peaks.size > 0:
-            ax.plot(chunk_frames[peaks], y_preprocessed[peaks],
+            ax.plot(chunk_times[peaks], y_preprocessed[peaks],
                     "x", color="green", markersize=8,
                     label=peaks_label)
 
-        # Annotate chunk metrics
+        # Annotate chunk metrics (time-based)
         if depth is not None and rate is not None:
-            mid_frame = (start + end) // 2
+            mid_time = (start_frame + end_frame) / (2 * self.fps)
             print(f"[Graph Plotter] Chunk {idx+1} metrics: {depth:.1f}cm depth, {rate:.1f}cpm rate")
             ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
-                    xy=(mid_frame, np.max(y_preprocessed)),
+                    xy=(mid_time, np.max(y_preprocessed)),
                     xytext=(0, 10), textcoords='offset points',
                     ha='center', va='bottom', fontsize=9,
                     bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
         
-        return {'y_preprocessed': y_preprocessed[-1]}, end
+        return {'y_preprocessed': y_preprocessed[-1]}, end_frame
 
     def _plot_error_regions(self, ax, computed_error_regions):
         print("[Graph Plotter] Rendering error regions:")
-        for idx, (start, end) in enumerate(computed_error_regions):
-            print(f" - Region {idx+1}: frames {start}-{end}")
-            ax.axvspan(start, end, color='gray', alpha=0.2, label='Posture Errors' if idx == 0 else "")
+        for idx, (start_sec, end_sec) in enumerate(computed_error_regions):
+            print(f" - Region {idx+1}: {start_sec:.2f}s to {end_sec:.2f}s")
+            ax.axvspan(start_sec, end_sec, color='gray', alpha=0.2, label='Posture Errors' if idx == 0 else "")
             
-            # Get corresponding errors from original self.error_regions list
+            # Annotate error text
             region_data = self.error_regions[idx]
             if region_data['errors']:
                 error_text = "Errors:\n" + "\n".join(region_data['errors'])
-                mid_frame = (start + end) // 2
-                ax.text(mid_frame, np.mean(ax.get_ylim()), error_text,
+                mid_time = (start_sec + end_sec) / 2
+                ax.text(mid_time, np.mean(ax.get_ylim()), error_text,
                         ha='center', va='center', fontsize=9, color='red', alpha=0.8,
                         bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='red', alpha=0.7))
-
+    
     def _print_analysis_details(self, sorted_chunks):
         """Combined helper for printing chunks and error regions"""
-        print("[Graph Plotter]\n=== CPR Chunk Analysis ===")
+        print(f"\n\n=== CPR Chunk Analysis ===")
         for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
             duration = end - start + 1
             print(f"[Graph Plotter] Chunk {idx+1}: "
                   f"Frames {start}-{end} ({duration} frames), "
                   f"Depth: {depth:.1f}cm, Rate: {rate:.1f}cpm")
 
-        print("\n[Graph Plotter] === Error Region Analysis ===")
+        print(f"\n\n=== Error Region Analysis ===")
         for i, region in enumerate(self.error_regions):
             start = region['start_frame']
             end = region['end_frame']
             errors = region['errors']
             error_str = ", ".join(errors) if errors else "No errors detected"
             print(f"[Graph Plotter] Region {i+1}: Frames {start}-{end} - {error_str}")
+        
+        print(f"\n\n")
