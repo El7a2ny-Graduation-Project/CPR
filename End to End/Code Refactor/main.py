@@ -46,6 +46,7 @@ class CPRAnalyzer:
         self.chest_initializer = ChestInitializer()
         self.metrics_calculator = MetricsCalculator(self.frame_count, shoulder_width_cm=45*0.65)
         
+        # Remeber the conditions if you need to adjust the thresholds
         # if avg_right > self.right_arm_angle_threshold: error
         # if avg_left < self.left_arm_angle_threshold: error
 
@@ -69,25 +70,44 @@ class CPRAnalyzer:
 
         #& Workaround for minor glitches
         self.consecutive_frames_with_posture_errors = 0
-        self.max_consecutive_frames_with_posture_errors = 2 #! CRITICAL Minimum 2 
 
         #& Initialize variables for reporting warnings
         self.posture_errors_for_current_error_region = set()
 
-        #& Frequent depth and rate calculations
-        self.reporting_interval_in_seconds = 5
-        self.reporting_interval_in_frames = int(self.fps * self.reporting_interval_in_seconds)
-        print(f"[INIT] Reporting interval set to {self.reporting_interval_in_seconds} seconds ({self.reporting_interval_in_frames} frames)")
-        
-		#& Sampling
-        self.sampling_interval_in_seconds = 0.1
-        self.sampling_interval_in_frames = int(self.fps * self.sampling_interval_in_seconds)
-        print(f"[INIT] Sampling interval set to {self.sampling_interval_in_seconds} seconds ({self.sampling_interval_in_frames} frames)")
+        #& Fundamental timing parameters (in seconds)
+        self.MIN_ERROR_DURATION = 1.0    # Require sustained errors for 1 second
+        self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
+        self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
 
-        #& Display rate and depth warnings
-        self.rate_and_depth_warnings_should_display_duration_in_number_of_frames = 30 # Downsampling considered
+        # Derived frame counts (calculated once during initialization)
+        self.sampling_interval_frames = int(round(self.fps * self.SAMPLING_INTERVAL))
+        self.error_threshold_frames = int(self.MIN_ERROR_DURATION / self.SAMPLING_INTERVAL)
+        self.reporting_interval_frames = int(self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL)
+
+        # Enhanced validation using ratio checking
+        ratio = self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL
+        assert math.isclose(ratio, round(ratio)), \
+            f"Reporting interval ({self.REPORTING_INTERVAL}) must be an exact multiple of "\
+            f"sampling interval ({self.SAMPLING_INTERVAL}). Actual ratio: {ratio:.2f}"
+
+        assert self.MIN_ERROR_DURATION >= self.SAMPLING_INTERVAL, \
+            f"Error detection window ({self.MIN_ERROR_DURATION}s) must be ≥ sampling interval ({self.SAMPLING_INTERVAL}s)"
+
+        print(f"[INIT] Temporal alignment:")
+        print(f" - {self.SAMPLING_INTERVAL}s sampling → {self.sampling_interval_frames} frames")
+        print(f" - {self.MIN_ERROR_DURATION}s error detection → {self.error_threshold_frames} samples")
+        print(f" - {self.REPORTING_INTERVAL}s reporting → {self.reporting_interval_frames} samples")
+
+        #& Warning display parameters
         self.active_rate_and_depth_warnings = None
         self.rate_and_depth_warnings_counter = 0
+        
+        # Calculate display duration based on reporting interval (now frame-rate agnostic)
+        self.rate_and_depth_warnings_display_duration = \
+            int(self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL)  # Auto-calculate based on timing params
+        
+        print(f"[INIT] Warning display duration: {self.rate_and_depth_warnings_display_duration} samples "
+            f"({self.rate_and_depth_warnings_display_duration * self.SAMPLING_INTERVAL:.1f}s)")
 
     def run_analysis(self):
         try:
@@ -115,7 +135,7 @@ class CPRAnalyzer:
                 print(f"\n[FRAME {int(frame_counter)}/{self.frame_count}]")
                 
 				#& Check if you want to skip the frame
-                if frame_counter % self.sampling_interval_in_frames != 0:
+                if frame_counter % self.sampling_interval_frames != 0:
                     print(f"[SKIP FRAME] Skipping frame {int(frame_counter)}")
                     continue
                 
@@ -151,7 +171,6 @@ class CPRAnalyzer:
                     self.rate_and_depth_warnings_counter -= 1
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented")
 
-
                 #& Set the chunk start frame index for the first chunk
                 # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
                 # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
@@ -172,16 +191,21 @@ class CPRAnalyzer:
                     mini_chunk_start_frame_index = frame_counter
                     print(f"[RUN ANALYSIS] A new chunk is starting")
 
-
                     if len(self.posture_errors_for_current_error_region) > 0:
-
-                        self.posture_analyzer.posture_errors_for_all_error_region.append(self.posture_errors_for_current_error_region.copy())
+                        error_region_start = max(chunk_end_frame_index, mini_chunk_end_frame_index) + 1
+                        error_region_end = frame_counter - 1
+                        
+                        self.posture_analyzer.assign_error_region_data(
+                            error_region_start,
+                            error_region_end,
+                            self.posture_errors_for_current_error_region
+        )
                         self.posture_errors_for_current_error_region.clear()
                         print(f"[RUN ANALYSIS] Reset posture errors for current error region")
 
                 #& Process the current chunk or mini chunk if the conditions are met
                 process_chunk = (is_complete_chunk or frame_counter == self.frame_count - 1) and (not waiting_to_start_new_chunk) and (frame_counter != 0)
-                process_mini_chunk = (frame_counter % self.reporting_interval_in_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk)                     
+                process_mini_chunk = (frame_counter % self.reporting_interval_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_complete_chunk)                     
 
                 if process_chunk: 
                     print(f"[RUN ANALYSIS] Chunk completion detected")
@@ -213,7 +237,7 @@ class CPRAnalyzer:
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
 
-                    self.rate_and_depth_warnings_counter = self.rate_and_depth_warnings_should_display_duration_in_number_of_frames
+                    self.rate_and_depth_warnings_counter = self.rate_and_depth_warnings_display_duration 
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter set")
 
                     print(f"[RUN ANALYSIS] Added rate and depth warning to processed frame")
@@ -341,7 +365,7 @@ class CPRAnalyzer:
             print("[POSTURE ANALYSIS] No posture issues detected")
             self.consecutive_frames_with_posture_errors = 0
         
-        accept_frame = self.consecutive_frames_with_posture_errors < self.max_consecutive_frames_with_posture_errors
+        accept_frame = self.consecutive_frames_with_posture_errors < self.error_threshold_frames
 
         if accept_frame:
             warnings = []  # Reset warnings if the frame is accepted
@@ -439,7 +463,7 @@ class CPRAnalyzer:
 
     def _calculate_rate_and_depth_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
         try:
-            result = self.metrics_calculator.handle_chunk(np.array(self.wrists_midpoint_analyzer.midpoint_history), chunk_start_frame_index, chunk_end_frame_index, self.fps, np.array(self.shoulders_analyzer.shoulder_distance_history), self.sampling_interval_in_frames)
+            result = self.metrics_calculator.handle_chunk(np.array(self.wrists_midpoint_analyzer.midpoint_history), chunk_start_frame_index, chunk_end_frame_index, self.fps, np.array(self.shoulders_analyzer.shoulder_distance_history), self.sampling_interval_frames)
 
             if result == False:
                 print("[ERROR] Failed to calculate metrics for the chunk")
@@ -457,7 +481,7 @@ class CPRAnalyzer:
             
     def _plot_full_motion_curve_for_all_chunks(self):
         try:
-            self.metrics_calculator.plot_motion_curve_for_all_chunks(self.posture_analyzer.posture_errors_for_all_error_region, self.sampling_interval_in_frames, self.reporting_interval_in_frames)
+            self.metrics_calculator.plot_motion_curve_for_all_chunks(self.posture_analyzer.error_regions, self.sampling_interval_frames, self.reporting_interval_frames)
             print("[PLOT] Full motion curve plotted")
         except Exception as e:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")

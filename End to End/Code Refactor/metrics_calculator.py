@@ -369,11 +369,23 @@ class MetricsCalculator:
         self.detect_midpoints_peaks()
         if not self.detect_midpoints_peaks():
             print("Peak detection failed, skipping chunk")
+
+            self.peaks = np.array([])
+            self.peaks_max = np.array([])
+            self.peaks_min = np.array([])
+
+            self.depth = 0
+            self.rate = 0
+
             return False
         
         self.calculate_cm_px_ratio(shoulder_distances)
         if self.cm_px_ratio is None:
             print("cm/px ratio calculation failed, skipping chunk")
+
+            self.depth = 0
+            self.rate = 0
+            
             return False
         
         self.calculate_rate_and_depth_for_chunk(fps, sampling_interval_in_frames)
@@ -386,7 +398,8 @@ class MetricsCalculator:
         return True
 
 #^ ################# Plotting #######################
-    def plot_motion_curve_for_all_chunks(self, posture_errors_for_all_error_region, sampling_interval_in_frames, reporting_interval):
+
+    def plot_motion_curve_for_all_chunks(self, error_regions, sampling_interval_in_frames, reporting_interval):
         """Plot combined analysis with connected chunks and proper error regions"""
         print("[Plot Graph] Initializing complete motion curve plot...")
         
@@ -415,11 +428,12 @@ class MetricsCalculator:
                 ax, chunk, idx, prev_last_point, prev_chunk_end, sampling_interval_in_frames
             )
         
-        # Compute and plot error regions
-        error_regions = self._compute_error_regions(sorted_chunks, sampling_interval_in_frames, reporting_interval)
-        print(f"[Plot Graph] Identified {len(error_regions)} error regions")
-        self._print_analysis_details(sorted_chunks, error_regions, posture_errors_for_all_error_region)
-        self._plot_error_regions(ax, error_regions, posture_errors_for_all_error_region)
+        # Convert error regions to frame tuples for plotting
+        computed_error_regions = [(er['start_frame'], er['end_frame']) for er in error_regions]
+        print(f"[Plot Graph] Received {len(error_regions)} error regions")
+        
+        self._print_analysis_details(sorted_chunks, error_regions)
+        self._plot_error_regions(ax, computed_error_regions, error_regions)
         
         # Configure legend and layout
         handles, labels = ax.get_legend_handles_labels()
@@ -488,63 +502,22 @@ class MetricsCalculator:
         
         return {'y_preprocessed': y_preprocessed[-1]}, end
 
-    def _compute_error_regions(self, sorted_chunks, sampling_interval, reporting_interval):
-        error_regions = []
-        chunk_boundaries = [chunk[0][0] for chunk in sorted_chunks]
-        chunk_boundaries.append(sorted_chunks[-1][0][1])
-        
-        print("[Plot Graph] Computing error regions:")
-        
-        # Before first chunk - only report if gap is ≥ sampling_interval
-        first_chunk_start = sorted_chunks[0][0][0]
-
-
-        if first_chunk_start > 0 and first_chunk_start > sampling_interval:
-            print(f" - Pre-chunk region: 0-{first_chunk_start-1} (length: {first_chunk_start})")
-            error_regions.append((0, first_chunk_start - 1))
-        elif first_chunk_start > 0:
-            print(f" - Skipping short pre-chunk region (length: {first_chunk_start} < {sampling_interval})")
-        
-        # Between chunks
-        for i in range(1, len(sorted_chunks)):
-            prev_end = sorted_chunks[i-1][0][1]
-            curr_start = sorted_chunks[i][0][0]
-            gap_length = curr_start - prev_end
-            if gap_length > sampling_interval + 1:
-                print(f" - Inter-chunk region: {prev_end+1}-{curr_start-1} (length: {gap_length-1})")
-                error_regions.append((prev_end + 1, curr_start - 1))
-            elif gap_length > 1:
-                print(f" - Skipping short inter-chunk gap (length: {gap_length-1} ≤ {sampling_interval})")
-        
-        # After last chunk
-        last_end = sorted_chunks[-1][0][1]
-        remaining_frames = self.frame_count - 1 - last_end
-        if last_end < self.frame_count - 1 and remaining_frames >= reporting_interval:
-            print(f" - Post-chunk region: {last_end+1}-{self.frame_count-1} (length: {remaining_frames})")
-            error_regions.append((last_end + 1, self.frame_count - 1))
-        elif last_end < self.frame_count - 1:
-            print(f" - Skipping short post-chunk region (length: {remaining_frames} < {sampling_interval})")
-        
-        return [r for r in error_regions if r[1] - r[0] > 0]
-
-    def _plot_error_regions(self, ax, error_regions, posture_errors):
+    def _plot_error_regions(self, ax, computed_error_regions, error_regions):
         print("[Plot Graph] Rendering error regions:")
-        for idx, (start, end) in enumerate(error_regions):
+        for idx, (start, end) in enumerate(computed_error_regions):
             print(f" - Region {idx+1}: frames {start}-{end}")
             ax.axvspan(start, end, color='gray', alpha=0.2, label='Posture Errors' if idx == 0 else "")
             
-            if posture_errors:
-                try:
-                    region_errors = posture_errors[idx]
-                    error_text = "Errors:\n" + "\n".join(region_errors) if region_errors else ""
-                    mid_frame = (start + end) // 2
-                    ax.text(mid_frame, np.mean(ax.get_ylim()), error_text,
-                            ha='center', va='center', fontsize=9, color='red', alpha=0.8,
-                            bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='red', alpha=0.7))
-                except IndexError:
-                    print(f"[Plot Graph] Warning: No error data for region {idx}")
+            # Get corresponding errors from original error_regions list
+            region_data = error_regions[idx]
+            if region_data['errors']:
+                error_text = "Errors:\n" + "\n".join(region_data['errors'])
+                mid_frame = (start + end) // 2
+                ax.text(mid_frame, np.mean(ax.get_ylim()), error_text,
+                        ha='center', va='center', fontsize=9, color='red', alpha=0.8,
+                        bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='red', alpha=0.7))
 
-    def _print_analysis_details(self, sorted_chunks, error_regions, posture_errors):
+    def _print_analysis_details(self, sorted_chunks, error_regions):
         """Combined helper for printing chunks and error regions"""
         print("[Plot Graph]\n=== CPR Chunk Analysis ===")
         for idx, ((start, end), depth, rate) in enumerate(sorted_chunks):
@@ -554,13 +527,12 @@ class MetricsCalculator:
                   f"Depth: {depth:.1f}cm, Rate: {rate:.1f}cpm")
 
         print("\n[Plot Graph] === Error Region Analysis ===")
-        for i, (start, end) in enumerate(error_regions):
-            try:
-                errors = posture_errors[i]
-                error_str = ", ".join(errors) if errors else "No errors"
-                print(f"[Plot Graph] Region {i+1}: Frames {start}-{end} - {error_str}")
-            except IndexError:
-                print(f"[Plot Graph] Region {i+1}: Frames {start}-{end} - Error data missing")
+        for i, region in enumerate(error_regions):
+            start = region['start_frame']
+            end = region['end_frame']
+            errors = region['errors']
+            error_str = ", ".join(errors) if errors else "No errors detected"
+            print(f"[Plot Graph] Region {i+1}: Frames {start}-{end} - {error_str}")
 
 #^ ################# Warnings #######################
 
@@ -705,3 +677,19 @@ class MetricsCalculator:
         cv2.putText(frame, text, (x, y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
                     cv2.LINE_AA)
+
+#^ ################# Comments #######################
+# Between every two consecutive mini chunks, there wil be "sampling interval" frames unaccounted for.
+# This is because when we reach the "reporting interval" number of frames, we terminate the first mini chunk.
+# But we only start the next mini chunk when we detect the next successfully processed frame.
+# Which is "sampling interval" frames later at the earliest.
+# We can't just initialize the next mini chunk at the "reporting interval" frame, because we need to wait for the next successful frame.
+# Becuase maybe the next frame is a frame with posture errors.
+# For better visualization, we connect between the last point of the previous chunk and the first point of the next chunk if they are "sampling interval" frames apart.
+# But that is only for visualization, all calculations are done on the original frames.
+
+# Chunks that are too short can fail any stage of the "handle chunk" process.
+# If they do, we vizualize what we have and ignore the rest.
+# For example, a chunk with < 2 peaks will not be able to calculate the rate.
+# So we will set it to zero and display the midpoints and detected peaks.
+# If there are no peaks, we will set the rate to zero and display the midpoints.
