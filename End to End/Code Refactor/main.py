@@ -107,6 +107,9 @@ class CPRAnalyzer:
         
         print(f"[INIT] Warning display duration: {self.rate_and_depth_warnings_display_duration} samples "
             f"({self.rate_and_depth_warnings_display_duration * self.SAMPLING_INTERVAL:.1f}s)")
+        
+        #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+        self.posture_warnings_for_current_frame = []
 
     def _initialize_video_writer(self, frame):
         """Initialize writer with safe fallback options"""
@@ -189,7 +192,8 @@ class CPRAnalyzer:
                 # - accept_frame: True if the frame is accepted for further processing, False otherwise.
                 # Not that a frame containing an error could be accepted if the number of consecutive frames with errors is less than the threshold.
                 #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                is_complete_chunk, accept_frame = self._process_frame(frame)
+                is_complete_chunk, accept_frame, posture_warnings = self._process_frame(frame)
+                self.posture_warnings_for_current_frame = posture_warnings
                 print(f"[RUN ANALYSIS] Processed frame")
                 
                 #& Compose frame
@@ -363,8 +367,8 @@ class CPRAnalyzer:
         #! Imagine an error region with 5 seconds of hands not on chest followed by 5 seconds of left arm bent.
         #! The second 5 second with report both errors.
         return {
-            "status": "warning" if any([self.posture_errors_for_current_error_region, self.active_rate_and_depth_warnings]) else "ok",
-            "posture_warnings": list(self.posture_errors_for_current_error_region),
+            "status": "warning" if any([self.posture_warnings_for_current_frame, self.active_rate_and_depth_warnings]) else "ok",
+            "posture_warnings": list(self.posture_warnings_for_current_frame),
             "rate_and_depth_warnings": self.active_rate_and_depth_warnings,
         }
 
@@ -394,7 +398,7 @@ class CPRAnalyzer:
         
         if not pose_results:
             print("[POSE ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
         
         #& Rescuer and Patient Classification
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
@@ -414,7 +418,7 @@ class CPRAnalyzer:
         
         if not rescuer_processed_results or not patient_processed_results:
             print("[ROLE CLASSIFICATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
@@ -433,7 +437,7 @@ class CPRAnalyzer:
 
         if not chest_params:
             print("[CHEST ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
@@ -481,7 +485,7 @@ class CPRAnalyzer:
         
         if not midpoint:
             print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame
+            return is_complete_chunk, accept_frame, warnings
 
         if accept_frame:
             #^ Set Params in Role Classifier (to draw later)
@@ -509,7 +513,7 @@ class CPRAnalyzer:
                 if num_warnings_after > num_warnings_before:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
 
-        return is_complete_chunk, accept_frame
+        return is_complete_chunk, accept_frame, warnings
     
     def _compose_frame(self, frame, accept_frame):
         # Chest Region
