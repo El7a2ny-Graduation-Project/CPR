@@ -99,6 +99,7 @@ class RoleClassifier:
                 
                 # Calculate features
                 verticality_score = self._calculate_verticality_score(bounding_box)
+                #!We already have the center coordinates from the bounding box, no need to recalculate it.
                 bounding_box_center = self._calculate_bounding_box_center(bounding_box)
                 
                 # Store valid results
@@ -132,6 +133,7 @@ class RoleClassifier:
             potential_rescuers = [
                 res for res in processed_results 
                 if res['verticality_score'] == 1 
+                #! Useless condition because the patient was horizontal
                 and res['original_index'] != patient['original_index']
             ]
             

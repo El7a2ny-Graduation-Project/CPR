@@ -8,10 +8,9 @@ import cv2
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
     
-    def __init__(self, frame_count, shoulder_width_cm):
+    def __init__(self, shoulder_width_cm):
         # Configuration parameters
         self.shoulder_width_cm = shoulder_width_cm
-        self.frame_count = frame_count
 
         # Parameters for cleaning the smoothed midpoints
         self.removing_impulse_noise_window_size = 5
