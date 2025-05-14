@@ -27,6 +27,8 @@ class MetricsCalculator:
 
         self.depth = None
         self.rate = None
+
+        self.rate_and_depth_warnings = []
         
         # Parameters for all chunks
         self.chunks_y_preprocessed = []
@@ -40,6 +42,8 @@ class MetricsCalculator:
         self.weighted_rate = None
 
         self.chunks_start_and_end_indices = []
+
+        self.chunks_rate_and_depth_warnings = []
 
         # Parameters for validation
         self.min_depth_threshold = 3.0  # cm
@@ -294,6 +298,8 @@ class MetricsCalculator:
 
         self.current_chunk_start = chunk_start_frame_index
         self.current_chunk_end = chunk_end_frame_index
+
+        self.chunks_rate_and_depth_warnings.append(self.rate_and_depth_warnings.copy())
         
     def calculate_rate_and_depth_for_all_chunk(self):
         """
@@ -338,6 +344,82 @@ class MetricsCalculator:
         
             print(f"[RESULTS] Weighted average depth: {self.weighted_depth:.1f} cm")
             print(f"[RESULTS] Weighted average rate: {self.weighted_rate:.1f} cpm")
+
+#^ ################# Warnings #######################
+
+    def _get_rate_and_depth_status(self):
+        """Internal validation logic"""
+
+        depth_status = "normal"
+        rate_status  = "normal"
+        
+        if self.depth < self.min_depth_threshold and self.depth > 0:
+            depth_status = "low"
+        elif self.depth > self.max_depth_threshold:
+            depth_status = "high"
+            
+        if self.rate < self.min_rate_threshold and self.rate > 0:
+            rate_status = "low"
+        elif self.rate > self.max_rate_threshold:
+            rate_status = "high"
+            
+        return depth_status, rate_status
+
+    def get_rate_and_depth_warnings(self):
+        """Get performance warnings based on depth and rate"""
+
+        depth_status, rate_status = self._get_rate_and_depth_status()
+
+        warnings = []
+        if depth_status == "low":
+            warnings.append("Depth too low!")
+        elif depth_status == "high":
+            warnings.append("Depth too high!")
+
+        if rate_status == "low":
+            warnings.append("Rate too slow!")
+        elif rate_status == "high":
+            warnings.append("Rate too fast!")
+
+        self.rate_and_depth_warnings = warnings
+
+        return warnings
+
+
+    def _draw_warning_banner(self, frame, text, color, position):
+            """Base drawing function for warning banners"""
+            (text_width, text_height), _ = cv2.getTextSize(
+                text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+            
+            x, y = position
+            # Background rectangle
+            cv2.rectangle(frame, 
+                        (x - 10, y - text_height - 10),
+                        (x + text_width + 10, y + 10),
+                        color, -1)
+            # Text
+            cv2.putText(frame, text, (x, y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            
+    def draw_rate_and_depth_warnings(self, frame, warnings):
+        """Draw stacked warning messages on left side"""
+        WARNING_CONFIG = {
+            'Depth too low!': (125, 52, 235),             
+            'Depth too high!': (125, 52, 235),
+            'Rate too slow!': (235, 52, 214),
+            'Rate too fast!': (235, 52, 214),      
+            }
+        
+        y_start = 250 # After the posture error messages
+
+        for idx, warning in enumerate(warnings):
+            color = WARNING_CONFIG.get(warning, (255, 255, 255))
+            self._draw_warning_banner(
+                frame=frame,
+                text=warning,
+                color=color,
+                position=(50, y_start + idx*50)  # Stack vertically
+            )
 
 #^ ################# Handle Chunk #######################
 
@@ -395,79 +477,6 @@ class MetricsCalculator:
         self.assign_chunk_data(chunk_start_frame_index, chunk_end_frame_index)
         print(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} processed successfully")
         return True
-
-#^ ################# Warnings #######################
-
-    def _get_rate_and_depth_status(self):
-        """Internal validation logic"""
-
-        depth_status = "normal"
-        rate_status  = "normal"
-        
-        if self.depth < self.min_depth_threshold and self.depth > 0:
-            depth_status = "low"
-        elif self.depth > self.max_depth_threshold:
-            depth_status = "high"
-            
-        if self.rate < self.min_rate_threshold and self.rate > 0:
-            rate_status = "low"
-        elif self.rate > self.max_rate_threshold:
-            rate_status = "high"
-            
-        return depth_status, rate_status
-
-    def get_rate_and_depth_warnings(self):
-        """Get performance warnings based on depth and rate"""
-
-        depth_status, rate_status = self._get_rate_and_depth_status()
-
-        warnings = []
-        if depth_status == "low":
-            warnings.append("Depth too low!")
-        elif depth_status == "high":
-            warnings.append("Depth too high!")
-
-        if rate_status == "low":
-            warnings.append("Rate too slow!")
-        elif rate_status == "high":
-            warnings.append("Rate too fast!")
-
-        return warnings
-
-    def _draw_warning_banner(self, frame, text, color, position):
-            """Base drawing function for warning banners"""
-            (text_width, text_height), _ = cv2.getTextSize(
-                text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-            
-            x, y = position
-            # Background rectangle
-            cv2.rectangle(frame, 
-                        (x - 10, y - text_height - 10),
-                        (x + text_width + 10, y + 10),
-                        color, -1)
-            # Text
-            cv2.putText(frame, text, (x, y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-            
-    def draw_rate_and_depth_warnings(self, frame, warnings):
-        """Draw stacked warning messages on left side"""
-        WARNING_CONFIG = {
-            'Depth too low!': (125, 52, 235),             
-            'Depth too high!': (125, 52, 235),
-            'Rate too slow!': (235, 52, 214),
-            'Rate too fast!': (235, 52, 214),      
-            }
-        
-        y_start = 250 # After the posture error messages
-
-        for idx, warning in enumerate(warnings):
-            color = WARNING_CONFIG.get(warning, (255, 255, 255))
-            self._draw_warning_banner(
-                frame=frame,
-                text=warning,
-                color=color,
-                position=(50, y_start + idx*50)  # Stack vertically
-            )
 
 #^ ################# Comments #######################
 # Between every two consecutive mini chunks, there wil be "sampling interval" frames unaccounted for.

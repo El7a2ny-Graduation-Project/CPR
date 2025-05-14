@@ -206,6 +206,7 @@ class CPRAnalyzer:
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented, the remaining time is {self.rate_and_depth_warnings_counter} frames")
 
                 if (self.rate_and_depth_warnings_counter >= 0) and not accept_frame:
+                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                     self.rate_and_depth_warnings_from_the_last_report = []
                     self.rate_and_depth_warnings_counter = 0
                     print(f"[RUN ANALYSIS] Rate and depth warnings counter reset")
@@ -256,7 +257,7 @@ class CPRAnalyzer:
                     
                     chunk_end_frame_index = frame_counter - 1                
                     print(f"[RUN ANALYSIS] Determined the last frame of the chunk")
-
+                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                     self._calculate_rate_and_depth_for_chunk(chunk_start_frame_index, chunk_end_frame_index)
                     print(f"[RUN ANALYSIS] Calculated metrics for the chunk")
 
@@ -265,7 +266,7 @@ class CPRAnalyzer:
 
                     mini_chunk_end_frame_index = frame_counter
                     print(f"[RUN ANALYSIS] Determined the last frame of the mini chunk")
-
+                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                     self._calculate_rate_and_depth_for_chunk(mini_chunk_start_frame_index, mini_chunk_end_frame_index)
                     print(f"[RUN ANALYSIS] Calculated metrics for the mini chunk")                       
                         
@@ -348,6 +349,7 @@ class CPRAnalyzer:
     def _format_warnings(self):
         """Combine warnings into a simple structured response"""
         return {
+            #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
             "status": "warning" if any([self.posture_warnings_from_current_frame, self.rate_and_depth_warnings_from_the_last_report]) else "ok",
             "posture_warnings": list(self.posture_warnings_from_current_frame),
             "rate_and_depth_warnings": self.rate_and_depth_warnings_from_the_last_report,
@@ -548,6 +550,7 @@ class CPRAnalyzer:
             print(f"[ERROR] Failed to plot full motion curve: {str(e)}")
   
     def _get_rate_and_depth_warnings(self):
+        #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         self.rate_and_depth_warnings_from_the_last_report = self.metrics_calculator.get_rate_and_depth_warnings()
         print(f"[VISUALIZATION] Rate and depth warnings data: {self.rate_and_depth_warnings_from_the_last_report}")
 
