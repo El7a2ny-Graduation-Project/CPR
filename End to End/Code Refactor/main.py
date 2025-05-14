@@ -133,7 +133,7 @@ class CPRAnalyzer:
         
         print("[ERROR] Failed to initialize any video writer!")
         self._writer_initialized = False
-
+        
     def run_analysis(self):
         try:
             print("\n[RUN ANALYSIS] Starting analysis")
@@ -318,7 +318,6 @@ class CPRAnalyzer:
 
         finally:
             report_and_plot_start_time = time.time()
-
             #& Cleanup, calculate averages, and plot full motion curve
             self.cap.release()
             if self.video_writer is not None:
@@ -332,6 +331,9 @@ class CPRAnalyzer:
 
             self._plot_full_motion_curve_for_all_chunks()
             print("[RUN ANALYSIS] Plotted full motion curve")
+
+            self.metrics_calculator.add_warnings_to_processed_video(self.output_video_path, self.sampling_interval_frames)
+            print("[RUN ANALYSIS] Added warnings to processed video")
 
             report_and_plot_end_time = time.time()
             report_and_plot_elapsed_time = report_and_plot_end_time - report_and_plot_start_time

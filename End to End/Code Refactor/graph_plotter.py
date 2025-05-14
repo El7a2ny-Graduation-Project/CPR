@@ -75,7 +75,7 @@ class GraphPlotter:
         plt.title("Complete CPR Analysis with Metrics")
         plt.grid(True)
         plt.tight_layout()
-        print("[Graph Plotter] Finalizing plot layout")
+        print(f"\n[Graph Plotter] Finalizing plot layout")
         plt.show()
         print("[Graph Plotter] Plot display complete")
 
@@ -152,28 +152,41 @@ class GraphPlotter:
                         bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='red', alpha=0.7))
     
     def _print_analysis_details(self, sorted_chunks):
-        """Combined helper for printing chunks and error regions"""
-
+        """Combined helper for printing chunks and error regions in seconds"""
         print(f"\n\n=== CPR Chunk Analysis ===")
         display_idx = 0  # Separate counter for displayed indices
-        for ((start, end), depth, rate) in sorted_chunks:
+        
+        # Convert frame numbers to seconds using video FPS
+        fps = self.fps  # Get FPS from class instance
+        
+        for ((start_frame, end_frame), depth, rate) in sorted_chunks:
             # Skip chunks with both values at 0
             if depth == 0 and rate == 0:
                 continue
                 
-            duration = end - start + 1
+            # Convert frames to seconds
+            start_sec = start_frame / fps
+            end_sec = end_frame / fps
+            duration_sec = (end_frame - start_frame + 1) / fps  # +1 to include both endpoints
+            
             print(f"[Graph Plotter] Chunk {display_idx+1}: "
-                f"Frames {start}-{end} ({duration} frames), "
+                f"Time {start_sec:.2f}s - {end_sec:.2f}s ({duration_sec:.2f}s), "
                 f"Depth: {depth:.1f}cm, Rate: {rate:.1f}cpm")
             
-            display_idx += 1  # Only increment counter for displayed entries
+            display_idx += 1
 
         print(f"\n\n=== Error Region Analysis ===")
-        for i, region in enumerate(self.error_regions):
-            start = region['start_frame']
-            end = region['end_frame']
+        for i, region in enumerate(self.error_regions):  # Updated to match actual attribute name
+            start_frame = region['start_frame']
+            end_frame = region['end_frame']
             errors = region['errors']
+            
+            # Convert to seconds
+            start_sec = start_frame / fps
+            end_sec = end_frame / fps
             error_str = ", ".join(errors) if errors else "No errors detected"
-            print(f"[Graph Plotter] Region {i+1}: Frames {start}-{end} - {error_str}")
+            
+            print(f"[Graph Plotter] Region {i+1}: "
+                f"Time {start_sec:.2f}s - {end_sec:.2f}s - {error_str}")
         
         print(f"\n\n")

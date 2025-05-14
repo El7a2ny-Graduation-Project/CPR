@@ -4,6 +4,7 @@ from scipy.signal import savgol_filter, find_peaks
 import matplotlib.pyplot as plt
 import sys
 import cv2
+import os
 
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
@@ -421,6 +422,81 @@ class MetricsCalculator:
                 position=(50, y_start + idx*50)  # Stack vertically
             )
 
+    def add_warnings_to_processed_video(self, output_video_path, sampling_interval_frames):
+        """Post-process video to draw rate/depth warnings with proper timing"""
+        print("\n[POST-PROCESS] Starting warning overlay")
+
+        # Read processed video
+        cap = cv2.VideoCapture(output_video_path)
+        if not cap.isOpened():
+            print("[ERROR] Failed to open processed video")
+            return
+        print(f"[POST-PROCESS] Processing video: {output_video_path}")
+
+        # Get processed video properties
+        processed_fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        print(f"[POST-PROCESS] Video properties: {width}x{height}, {processed_fps:.1f} FPS, {total_frames} frames\n")
+        
+        # Create final output writer
+        base = os.path.splitext(output_video_path)[0]
+        final_path = os.path.abspath(f"{base}_final.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(final_path, fourcc, processed_fps, (width, height))
+        
+        # Convert warning periods to processed frame indices
+        warning_periods = []
+        for (chunk_start, chunk_end), warnings in zip(
+            self.chunks_start_and_end_indices,
+            self.chunks_rate_and_depth_warnings
+        ):
+            if not warnings:
+                continue
+                
+            # Map original frames to processed frames
+            start_processed = int(chunk_start // sampling_interval_frames)
+            end_processed = int(chunk_end // sampling_interval_frames)
+            
+            # Convert to seconds using processed video's FPS
+            start_sec = start_processed / processed_fps
+            end_sec = end_processed / processed_fps
+            
+            print(f"[POST-PROCESS] Warning period: {start_sec:.2f}s to {end_sec:.2f}s")
+            print(f"[POST-PROCESS] Warnings: {warnings}")
+            
+            warning_periods.append((
+                start_processed,
+                end_processed,
+                warnings
+            ))
+
+        # Process each frame
+        for frame_idx in range(total_frames):
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Calculate current time in seconds
+            current_time = frame_idx / processed_fps
+            
+            # Check active warnings
+            active_warnings = []
+            for start, end, warnings in warning_periods:
+                if start <= frame_idx <= end:
+                    active_warnings.extend(warnings)
+
+            # Draw warnings
+            if active_warnings:
+                self.draw_rate_and_depth_warnings(frame, active_warnings)
+
+            writer.write(frame)
+            
+        cap.release()
+        writer.release()
+        print(f"\n[POST-PROCESS] Final output saved to: {final_path}")
+
 #^ ################# Handle Chunk #######################
 
     def handle_chunk(self, midpoints, chunk_start_frame_index, chunk_end_frame_index, fps, shoulder_distances, sampling_interval_in_frames):
@@ -473,6 +549,10 @@ class MetricsCalculator:
         if self.depth is None or self.rate is None:
             print("Rate and depth calculation failed, skipping chunk")
             return False
+        else:
+            print(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} - Depth: {self.depth:.1f} cm, Rate: {self.rate:.1f} cpm")
+
+        self.get_rate_and_depth_warnings()
 
         self.assign_chunk_data(chunk_start_frame_index, chunk_end_frame_index)
         print(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} processed successfully")
