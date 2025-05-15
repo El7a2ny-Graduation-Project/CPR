@@ -60,7 +60,6 @@ class ThreadedCamera:
         #   Call the _reader method in parallel with the main program
         self.thread.start()
 
-
     def _reader(self):
         while self.running.is_set():
             ret, frame = self.cap.read()
@@ -79,7 +78,6 @@ class ThreadedCamera:
         return self.q.get()
 
     def release(self):
-
         cpr_logger.info(f"Number of dropped frames: {self.number_of_dropped_frames}")
         
         self.running.clear()

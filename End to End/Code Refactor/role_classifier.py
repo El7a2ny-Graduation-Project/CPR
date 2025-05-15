@@ -2,7 +2,6 @@
 import cv2
 import numpy as np
 from ultralytics.utils.plotting import Annotator  # Import YOLO's annotator
-from keypoints import CocoKeypoints
 from logging_config import cpr_logger
 
 

@@ -387,7 +387,6 @@ class MetricsCalculator:
 
         return warnings
 
-
     def _draw_warning_banner(self, frame, text, color, position):
             """Base drawing function for warning banners"""
             (text_width, text_height), _ = cv2.getTextSize(

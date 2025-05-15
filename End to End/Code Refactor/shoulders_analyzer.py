@@ -1,5 +1,3 @@
-# analyzers.py
-import cv2
 import numpy as np
 from keypoints import CocoKeypoints
 from logging_config import cpr_logger

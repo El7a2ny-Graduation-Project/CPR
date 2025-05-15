@@ -34,7 +34,6 @@ class AnalysisSocketServer:
             except Exception as e:
                 cpr_logger.info(f"[SOCKET] Connection error: {str(e)}")
 
-    # analysis_socket_server.py
     def wait_for_connection(self, timeout=None):
         """Block until a client connects"""
         cpr_logger.info("[SOCKET] Waiting for client connection...")

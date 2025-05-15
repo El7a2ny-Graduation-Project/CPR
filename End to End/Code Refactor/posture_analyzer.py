@@ -7,9 +7,6 @@ from logging_config import cpr_logger
 
 class PostureAnalyzer:
     """Posture analysis and visualization with comprehensive validation"""
-
-    #! The warnings depend on the average readings from the last 10 frames
-    #! This "10" should be adjusted according to the sampling rate of the video
     
     def __init__(self, right_arm_angle_threshold, left_arm_angle_threshold, wrist_distance_threshold, history_length_to_average):
         self.history_length_to_average = history_length_to_average

@@ -1,17 +1,9 @@
 # main.py
 import cv2
 import time
-import tkinter as tk  # For screen size detection
-from datetime import datetime
 import math
-import sys
 import numpy as np
 import os  # Added for path handling
-import select
-import socket
-import json
-from threading import Thread
-from queue import Queue
 
 from pose_estimation import PoseEstimator
 from role_classifier import RoleClassifier
@@ -575,7 +567,6 @@ if __name__ == "__main__":
     cpr_logger.info(f"\n[MAIN] CPR Analysis Started")
     
     source = "https://192.168.1.9:8080/video"  # IP camera URL
-    # source = 0
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     
