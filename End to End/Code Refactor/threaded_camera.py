@@ -49,38 +49,43 @@ class ThreadedCamera:
         #   Call the _reader method in parallel with the main program
         self.thread.start()
 
-    def _reader(self):
-        dropped_frames = 0
+        self.number_of_dropped_frames = 0
 
+    def _reader(self):
         while self.running.is_set():
             ret, frame = self.cap.read()
-           
             if not ret:
-                print("[ERROR] Failed to read camera frame")
+                print("Camera disconnected")
+                self.q.put(None)  # Sentinel for clean exit
                 break
-
+                
             try:
-                # Add timeout and handle full queue
-                self.q.put(frame, timeout=0.1)  # Non-blocking
+                self.q.put(frame, timeout=0.1)
             except queue.Full:
-                # If the queue is full, we can either drop the frame or handle it
-                # Here we just print a message and continue
-                dropped_frames += 1
-                print(f"[VIDEO CAPTURE] Queue is full, dropping frame")
-                print(f"[VIDEO CAPTURE] Dropped frames: {dropped_frames}")
+                print("Frame dropped")
+                self.number_of_dropped_frames += 1
 
     def read(self):
         return self.q.get()
 
     def release(self):
+
+        print(f"Number of dropped frames: {self.number_of_dropped_frames}")
+        
         self.running.clear()
-        self.thread.join(timeout=1.0)  # Wait max 1 second
+        
+        # First release the capture to unblock pending reads
+        self.cap.release()  # MOVED THIS LINE UP
+        
+        # Then join the thread
+        self.thread.join(timeout=1.0)
+        
         if self.thread.is_alive():
             print("Warning: Thread didn't terminate cleanly")
-        self.cap.release()
+        # Removed redundant self.cap.release()
 
     def isOpened(self):
-        return self.cap.isOpened()
+        return self.running.is_set() and self.cap.isOpened()
 
     def __del__(self):
         if self.running.is_set():  # Only release if not already done

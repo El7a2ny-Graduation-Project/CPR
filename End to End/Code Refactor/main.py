@@ -147,9 +147,15 @@ class CPRAnalyzer:
 
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
-            while self.cap.isOpened():
+            while True:
                 #& Get frame from camera queue
                 frame = self.cap.read()
+
+                # Check for termination sentinel
+                if frame is None:
+                    print("Camera stream ended")
+                    break
+
                 frame_counter += 1
                 print(f"\n[FRAME {int(frame_counter)}]")
                 
@@ -277,8 +283,8 @@ class CPRAnalyzer:
                 print(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
                                 
                 #& Check if the user wants to quit
-                if self._check_exit():
-                    print("\n[RUN ANALYSIS] Analysis stopped by user")
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    print("\n[RUN ANALYSIS] 'q' pressed, exiting loop.")
                     break
 
             main_loop_end_time = time.time()
@@ -292,6 +298,8 @@ class CPRAnalyzer:
             report_and_plot_start_time = time.time()
             #& Cleanup, calculate averages, and plot full motion curve
             self.cap.release()
+            self.cap = None
+            
             if self.video_writer is not None:
                 self.video_writer.release()
                 print(f"[VIDEO WRITER] Released writer. File should be at: {os.path.abspath(self.output_video_path)}")
@@ -310,15 +318,6 @@ class CPRAnalyzer:
             report_and_plot_end_time = time.time()
             report_and_plot_elapsed_time = report_and_plot_end_time - report_and_plot_start_time
             print(f"[TIMING] Report and plot elapsed time: {report_and_plot_elapsed_time:.2f}s")
-
-    def _check_exit(self):
-        try:
-            # Windows version (any key)
-            import msvcrt
-            return msvcrt.kbhit()
-        except ImportError:
-            # Unix version (needs ENTER)
-            return sys.stdin in select.select([sys.stdin], [], [], 0)[0]
 
     def _format_warnings(self):
         """Combine warnings into a simple structured response"""
