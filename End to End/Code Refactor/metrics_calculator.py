@@ -423,30 +423,27 @@ class MetricsCalculator:
             )
 
     def add_warnings_to_processed_video(self, output_video_path, sampling_interval_frames):
-        """Post-process video to draw rate/depth warnings with proper timing"""
+        """Post-process video with compatible encoding"""
         print("\n[POST-PROCESS] Starting warning overlay")
 
-        # Read processed video
+        # Read processed video with original parameters
         cap = cv2.VideoCapture(output_video_path)
         if not cap.isOpened():
             print("[ERROR] Failed to open processed video")
             return
-        print(f"[POST-PROCESS] Processing video: {output_video_path}")
 
-        # Get processed video properties
+        # Get original video properties
+        original_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
         processed_fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        print(f"[POST-PROCESS] Video properties: {width}x{height}, {processed_fps:.1f} FPS, {total_frames} frames\n")
         
-        # Create final output writer
+        # Create final writer with ORIGINAL codec and parameters
         base = os.path.splitext(output_video_path)[0]
         final_path = os.path.abspath(f"{base}_final.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        writer = cv2.VideoWriter(final_path, fourcc, processed_fps, (width, height))
+        writer = cv2.VideoWriter(final_path, original_fourcc, processed_fps, (width, height))
         
-        # Convert warning periods to processed frame indices
+        # Convert warning periods using SAMPLED frame timing
         warning_periods = []
         for (chunk_start, chunk_end), warnings in zip(
             self.chunks_start_and_end_indices,
@@ -455,44 +452,36 @@ class MetricsCalculator:
             if not warnings:
                 continue
                 
-            # Map original frames to processed frames
-            start_processed = int(chunk_start // sampling_interval_frames)
-            end_processed = int(chunk_end // sampling_interval_frames)
-            
-            # Convert to seconds using processed video's FPS
-            start_sec = start_processed / processed_fps
-            end_sec = end_processed / processed_fps
-            
-            print(f"[POST-PROCESS] Warning period: {start_sec:.2f}s to {end_sec:.2f}s")
-            print(f"[POST-PROCESS] Warnings: {warnings}")
+            # Convert original frames to processed frames
+            start_processed = chunk_start // sampling_interval_frames
+            end_processed = chunk_end // sampling_interval_frames
             
             warning_periods.append((
-                start_processed,
-                end_processed,
+                int(start_processed),
+                int(end_processed),
                 warnings
             ))
 
-        # Process each frame
-        for frame_idx in range(total_frames):
+        # Process frames with original timing
+        frame_idx = 0
+        while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            # Calculate current time in seconds
+            # Check active warnings using video FPS
             current_time = frame_idx / processed_fps
-            
-            # Check active warnings
             active_warnings = []
             for start, end, warnings in warning_periods:
                 if start <= frame_idx <= end:
                     active_warnings.extend(warnings)
 
-            # Draw warnings
             if active_warnings:
                 self.draw_rate_and_depth_warnings(frame, active_warnings)
 
             writer.write(frame)
-            
+            frame_idx += 1
+
         cap.release()
         writer.release()
         print(f"\n[POST-PROCESS] Final output saved to: {final_path}")
