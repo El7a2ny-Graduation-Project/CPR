@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import cv2
+from logging_config import cpr_logger
 
 class GraphPlotter:
     """Class to plot graphs for various metrics"""
@@ -27,16 +28,16 @@ class GraphPlotter:
         self.sampling_interval_in_frames = sampling_interval_in_frames
         self.fps = fps  # Store FPS
 
-        print(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.error_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames and FPS {self.fps}")
+        cpr_logger.info(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.error_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames and FPS {self.fps}")
 
     def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps):
         """Plot combined analysis with connected chunks and proper error regions"""
         
         self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps)
-        print("[Graph Plotter] Starting to plot motion curve for all chunks")
+        cpr_logger.info("[Graph Plotter] Starting to plot motion curve for all chunks")
         
         if not self.chunks_start_and_end_indices:
-            print("[Graph Plotter] No chunk data available for plotting")
+            cpr_logger.info("[Graph Plotter] No chunk data available for plotting")
             return
 
         plt.figure(figsize=(16, 8))
@@ -47,7 +48,7 @@ class GraphPlotter:
                                  self.chunks_depth, 
                                  self.chunks_rate),
                                  key=lambda x: x[0][0])
-        print(f"[Graph Plotter] Processing {len(sorted_chunks)} CPR chunks")
+        cpr_logger.info(f"[Graph Plotter] Processing {len(sorted_chunks)} CPR chunks")
 
         # Track previous chunk's last point and end frame
         prev_last_point = None
@@ -55,12 +56,12 @@ class GraphPlotter:
 
         # Plot each chunk and handle connections
         for idx, chunk in enumerate(sorted_chunks):
-            print(f"[Graph Plotter] Rendering chunk {idx+1}/{len(sorted_chunks)}")
+            cpr_logger.info(f"[Graph Plotter] Rendering chunk {idx+1}/{len(sorted_chunks)}")
             prev_last_point, prev_chunk_end = self._plot_single_chunk(ax, chunk, idx, prev_last_point, prev_chunk_end)
         
         # Convert error regions to time tuples for plotting
         computed_error_regions = [(er['start_frame']/self.fps, er['end_frame']/self.fps) for er in self.error_regions]
-        print(f"[Graph Plotter] Received {len(self.error_regions)} error regions")
+        cpr_logger.info(f"[Graph Plotter] Received {len(self.error_regions)} error regions")
         
         self._print_analysis_details(sorted_chunks)
         self._plot_error_regions(ax, computed_error_regions)
@@ -75,9 +76,9 @@ class GraphPlotter:
         plt.title("Complete CPR Analysis with Metrics")
         plt.grid(True)
         plt.tight_layout()
-        print(f"\n[Graph Plotter] Finalizing plot layout")
+        cpr_logger.info(f"\n[Graph Plotter] Finalizing plot layout")
         plt.show()
-        print("[Graph Plotter] Plot display complete")
+        cpr_logger.info("[Graph Plotter] Plot display complete")
 
     def _plot_single_chunk(self, ax, chunk, idx, prev_last_point, prev_chunk_end):
         (start_frame, end_frame), depth, rate = chunk
@@ -90,7 +91,7 @@ class GraphPlotter:
         # Add separator line between chunks (in seconds)
         if prev_chunk_end is not None:
             separator_x = (prev_chunk_end + 0.5) / self.fps
-            print(f"[Graph Plotter] Adding chunk separator at {separator_x:.2f} seconds")
+            cpr_logger.info(f"[Graph Plotter] Adding chunk separator at {separator_x:.2f} seconds")
             ax.axvline(x=separator_x, color='orange', linestyle=':', linewidth=1.5)
         
         # Check if chunks are contiguous and need connection (frame-based logic)
@@ -103,12 +104,12 @@ class GraphPlotter:
             connect_end = start_frame / self.fps
             connect_times = [connect_start, connect_end]
             
-            print(f"[Graph Plotter] Connecting chunk {idx+1} to previous chunk (time {connect_start:.2f}-{connect_end:.2f}s)")
+            cpr_logger.info(f"[Graph Plotter] Connecting chunk {idx+1} to previous chunk (time {connect_start:.2f}-{connect_end:.2f}s)")
             ax.plot(connect_times, [prev_last_point['y_preprocessed'], y_preprocessed[0]], 
                     color="blue", linewidth=2)
         
         # Plot current chunk data
-        print(f"[Graph Plotter] Plotting chunk {idx+1} (time {chunk_times[0]:.2f}-{chunk_times[-1]:.2f}s)")
+        cpr_logger.info(f"[Graph Plotter] Plotting chunk {idx+1} (time {chunk_times[0]:.2f}-{chunk_times[-1]:.2f}s)")
         smooth_label = "Motion" if idx == 0 else ""
         peaks_label = "Peaks" if idx == 0 else ""
 
@@ -127,7 +128,7 @@ class GraphPlotter:
         # Annotate chunk metrics (time-based)
         if (depth is not None and rate is not None) and (depth > 0 and rate > 0):
             mid_time = (start_frame + end_frame) / (2 * self.fps)
-            print(f"[Graph Plotter] Chunk {idx+1} metrics: {depth:.1f}cm depth, {rate:.1f}cpm rate")
+            cpr_logger.info(f"[Graph Plotter] Chunk {idx+1} metrics: {depth:.1f}cm depth, {rate:.1f}cpm rate")
             ax.annotate(f"Depth: {depth:.1f}cm\nRate: {rate:.1f}cpm",
                     xy=(mid_time, np.max(y_preprocessed)),
                     xytext=(0, 10), textcoords='offset points',
@@ -137,9 +138,9 @@ class GraphPlotter:
         return {'y_preprocessed': y_preprocessed[-1]}, end_frame
 
     def _plot_error_regions(self, ax, computed_error_regions):
-        print("[Graph Plotter] Rendering error regions:")
+        cpr_logger.info("[Graph Plotter] Rendering error regions:")
         for idx, (start_sec, end_sec) in enumerate(computed_error_regions):
-            print(f" - Region {idx+1}: {start_sec:.2f}s to {end_sec:.2f}s")
+            cpr_logger.info(f" - Region {idx+1}: {start_sec:.2f}s to {end_sec:.2f}s")
             ax.axvspan(start_sec, end_sec, color='gray', alpha=0.2, label='Posture Errors' if idx == 0 else "")
             
             # Annotate error text
@@ -153,7 +154,7 @@ class GraphPlotter:
     
     def _print_analysis_details(self, sorted_chunks):
         """Combined helper for printing chunks and error regions in seconds"""
-        print(f"\n\n=== CPR Chunk Analysis ===")
+        cpr_logger.info(f"\n\n=== CPR Chunk Analysis ===")
         display_idx = 0  # Separate counter for displayed indices
         
         # Convert frame numbers to seconds using video FPS
@@ -169,13 +170,13 @@ class GraphPlotter:
             end_sec = end_frame / fps
             duration_sec = (end_frame - start_frame + 1) / fps  # +1 to include both endpoints
             
-            print(f"[Graph Plotter] Chunk {display_idx+1}: "
+            cpr_logger.info(f"[Graph Plotter] Chunk {display_idx+1}: "
                 f"Time {start_sec:.2f}s - {end_sec:.2f}s ({duration_sec:.2f}s), "
                 f"Depth: {depth:.1f}cm, Rate: {rate:.1f}cpm")
             
             display_idx += 1
 
-        print(f"\n\n=== Error Region Analysis ===")
+        cpr_logger.info(f"\n\n=== Error Region Analysis ===")
         for i, region in enumerate(self.error_regions):  # Updated to match actual attribute name
             start_frame = region['start_frame']
             end_frame = region['end_frame']
@@ -186,7 +187,7 @@ class GraphPlotter:
             end_sec = end_frame / fps
             error_str = ", ".join(errors) if errors else "No errors detected"
             
-            print(f"[Graph Plotter] Region {i+1}: "
+            cpr_logger.info(f"[Graph Plotter] Region {i+1}: "
                 f"Time {start_sec:.2f}s - {end_sec:.2f}s - {error_str}")
         
-        print(f"\n\n")
+        cpr_logger.info(f"\n\n")

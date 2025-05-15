@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 from keypoints import CocoKeypoints
+from logging_config import cpr_logger
 
 class ShouldersAnalyzer:
     """Analyzes shoulder distances and posture"""
@@ -23,7 +24,7 @@ class ShouldersAnalyzer:
             
             return distance
         except Exception as e:
-            print(f"Shoulder distance error: {e}")
+            cpr_logger.info(f"Shoulder distance error: {e}")
             return
     
     def reset_shoulder_distances(self):

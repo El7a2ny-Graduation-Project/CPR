@@ -3,6 +3,7 @@ import math
 import cv2
 import numpy as np
 from keypoints import CocoKeypoints
+from logging_config import cpr_logger
 
 class PostureAnalyzer:
     """Posture analysis and visualization with comprehensive validation"""
@@ -41,7 +42,7 @@ class PostureAnalyzer:
                          math.atan2(a[1]-b[1], a[0]-b[0]))
             return ang + 360 if ang < 0 else ang
         except Exception as e:
-            print(f"Angle calculation error: {e}")
+            cpr_logger.info(f"Angle calculation error: {e}")
             return 0
     
     def _check_bended_right_arm(self, keypoints):
@@ -64,7 +65,7 @@ class PostureAnalyzer:
             return warnings
                 
         except Exception as e:
-            print(f"Right arm check error: {e}")
+            cpr_logger.info(f"Right arm check error: {e}")
         
         return warnings
     
@@ -88,7 +89,7 @@ class PostureAnalyzer:
             return warnings
                 
         except Exception as e:
-            print(f"Left arm check error: {e}")
+            cpr_logger.info(f"Left arm check error: {e}")
         
         return warnings
 
@@ -110,7 +111,7 @@ class PostureAnalyzer:
                 warnings.append("One-handed CPR detected!")
                 
         except Exception as e:
-            print(f"One-handed CPR check error: {e}")
+            cpr_logger.info(f"One-handed CPR check error: {e}")
         
         return warnings
 
@@ -130,7 +131,7 @@ class PostureAnalyzer:
                 warnings.append("Hands not on chest")
                 
         except Exception as e:
-            print(f"Hands on chest check error: {e}")
+            cpr_logger.info(f"Hands on chest check error: {e}")
         
         return warnings
 
@@ -189,7 +190,7 @@ class PostureAnalyzer:
                     )
             
         except Exception as e:
-            print(f"Warning display error: {e}")
+            cpr_logger.info(f"Warning display error: {e}")
         
         return frame
 

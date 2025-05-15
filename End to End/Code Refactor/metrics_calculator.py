@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import sys
 import cv2
 import os
+from logging_config import cpr_logger
 
 class MetricsCalculator:
     """Rate and depth calculation from motion data with improved peak detection"""
@@ -80,13 +81,13 @@ class MetricsCalculator:
             # Validate
             actual_y_exact_length = len(y_exact)
             if actual_y_exact_length != expected_samples:
-                print(f"\nERROR: Mismatch in expected and actual samples")
-                print(f"Expected: {expected_samples} samples (frames {start}-{end} @ every {interval} frames)")
-                print(f"Actual: {actual_y_exact_length} midoints points recieived")
+                cpr_logger.info(f"\nERROR: Mismatch in expected and actual samples")
+                cpr_logger.info(f"Expected: {expected_samples} samples (frames {start}-{end} @ every {interval} frames)")
+                cpr_logger.info(f"Actual: {actual_y_exact_length} midoints points recieived")
                 sys.exit(1)
 
         except Exception as e:
-            print(f"\nCRITICAL VALIDATION ERROR: {str(e)}")
+            cpr_logger.info(f"\nCRITICAL VALIDATION ERROR: {str(e)}")
             sys.exit(1)
 
 #^ ################# Preprocessing #######################
@@ -112,7 +113,7 @@ class MetricsCalculator:
                 )
                 return y_smooth
             except Exception as e:
-                print(f"Smoothing error: {e}")
+                cpr_logger.info(f"Smoothing error: {e}")
                 y_smooth = midpoints[:, 1]  # Fallback to original
                 return y_smooth
         else:
@@ -192,7 +193,7 @@ class MetricsCalculator:
         """
 
         if self.y_preprocessed.size == 0:
-            print("No smoothed values found for peak detection")
+            cpr_logger.info("No smoothed values found for peak detection")
             return False
             
         try:
@@ -212,7 +213,7 @@ class MetricsCalculator:
 
             return len(self.peaks) > 0
         except Exception as e:
-            print(f"Peak detection error: {e}")
+            cpr_logger.info(f"Peak detection error: {e}")
             return False
 
     def calculate_cm_px_ratio(self, shoulder_distances):
@@ -231,7 +232,7 @@ class MetricsCalculator:
             self.cm_px_ratio = self.shoulder_width_cm / avg_shoulder_width_px
         else:
             self.cm_px_ratio = None
-            print("No shoulder distances available for cm/px ratio calculation")
+            cpr_logger.info("No shoulder distances available for cm/px ratio calculation")
         
     def calculate_rate_and_depth_for_chunk(self, original_fps, sampling_interval_in_frames=1):
         """
@@ -273,7 +274,7 @@ class MetricsCalculator:
             self.depth = depth
             self.rate = rate
         except Exception as e:
-            print(f"Error calculating rate and depth: {e}")
+            cpr_logger.info(f"Error calculating rate and depth: {e}")
     
     def assign_chunk_data(self, chunk_start_frame_index, chunk_end_frame_index):
         """
@@ -312,11 +313,11 @@ class MetricsCalculator:
         """
         
         if not self.chunks_depth or not self.chunks_rate or not self.chunks_start_and_end_indices:
-            print("[WARNING] No chunk data available for averaging")
+            cpr_logger.info("[WARNING] No chunk data available for averaging")
             return None
             
         if not (len(self.chunks_depth) == len(self.chunks_rate) == len(self.chunks_start_and_end_indices)):
-            print("[ERROR] Mismatched chunk data lists")
+            cpr_logger.info("[ERROR] Mismatched chunk data lists")
             return None
 
         total_weight = 0
@@ -338,13 +339,13 @@ class MetricsCalculator:
             self.weighted_depth = None
             self.weighted_rate = None
 
-            print("[ERROR] No valid chunks for averaging")
+            cpr_logger.info("[ERROR] No valid chunks for averaging")
         else:
             self.weighted_depth = weighted_depth_sum / total_weight
             self.weighted_rate =  weighted_rate_sum / total_weight
         
-            print(f"[RESULTS] Weighted average depth: {self.weighted_depth:.1f} cm")
-            print(f"[RESULTS] Weighted average rate: {self.weighted_rate:.1f} cpm")
+            cpr_logger.info(f"[RESULTS] Weighted average depth: {self.weighted_depth:.1f} cm")
+            cpr_logger.info(f"[RESULTS] Weighted average rate: {self.weighted_rate:.1f} cpm")
 
 #^ ################# Warnings #######################
 
@@ -424,12 +425,12 @@ class MetricsCalculator:
 
     def add_warnings_to_processed_video(self, output_video_path, sampling_interval_frames):
         """Post-process video with compatible encoding"""
-        print("\n[POST-PROCESS] Starting warning overlay")
+        cpr_logger.info("\n[POST-PROCESS] Starting warning overlay")
 
         # Read processed video with original parameters
         cap = cv2.VideoCapture(output_video_path)
         if not cap.isOpened():
-            print("[ERROR] Failed to open processed video")
+            cpr_logger.info("[ERROR] Failed to open processed video")
             return
 
         # Get original video properties
@@ -484,7 +485,7 @@ class MetricsCalculator:
 
         cap.release()
         writer.release()
-        print(f"\n[POST-PROCESS] Final output saved to: {final_path}")
+        cpr_logger.info(f"\n[POST-PROCESS] Final output saved to: {final_path}")
 
 #^ ################# Handle Chunk #######################
 
@@ -509,12 +510,12 @@ class MetricsCalculator:
 
         preprocessing_reult = self.preprocess_midpoints(midpoints)
         if not preprocessing_reult:
-            print("Preprocessing failed, skipping chunk")
+            cpr_logger.info("Preprocessing failed, skipping chunk")
             return False
         
         self.detect_midpoints_peaks()
         if not self.detect_midpoints_peaks():
-            print("Peak detection failed, skipping chunk")
+            cpr_logger.info("Peak detection failed, skipping chunk")
 
             self.peaks = np.array([])
             self.peaks_max = np.array([])
@@ -527,7 +528,7 @@ class MetricsCalculator:
         
         self.calculate_cm_px_ratio(shoulder_distances)
         if self.cm_px_ratio is None:
-            print("cm/px ratio calculation failed, skipping chunk")
+            cpr_logger.info("cm/px ratio calculation failed, skipping chunk")
 
             self.depth = 0
             self.rate = 0
@@ -536,15 +537,15 @@ class MetricsCalculator:
         
         self.calculate_rate_and_depth_for_chunk(fps, sampling_interval_in_frames)
         if self.depth is None or self.rate is None:
-            print("Rate and depth calculation failed, skipping chunk")
+            cpr_logger.info("Rate and depth calculation failed, skipping chunk")
             return False
         else:
-            print(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} - Depth: {self.depth:.1f} cm, Rate: {self.rate:.1f} cpm")
+            cpr_logger.info(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} - Depth: {self.depth:.1f} cm, Rate: {self.rate:.1f} cpm")
 
         self.get_rate_and_depth_warnings()
 
         self.assign_chunk_data(chunk_start_frame_index, chunk_end_frame_index)
-        print(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} processed successfully")
+        cpr_logger.info(f"Chunk {chunk_start_frame_index}-{chunk_end_frame_index} processed successfully")
         return True
 
 #^ ################# Comments #######################

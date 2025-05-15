@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from ultralytics.utils.plotting import Annotator  # Import YOLO's annotator
 from keypoints import CocoKeypoints
+from logging_config import cpr_logger
 
 
 class RoleClassifier:
@@ -28,7 +29,7 @@ class RoleClassifier:
             return 1 if height > width else 0  # 1 for vertical, 0 for horizontal
             
         except (TypeError, ValueError) as e:
-            print(f"Verticality score calculation error: {e}")
+            cpr_logger.info(f"Verticality score calculation error: {e}")
             return -1
         
     def _calculate_bounding_box_center(self, bounding_box):
@@ -94,7 +95,7 @@ class RoleClassifier:
                 if threshold:
                     box_area = width * height
                     if box_area > threshold * 1.2:  # 20% tolerance
-                        print(f"Filtered oversized box {i} (area: {box_area:.1f} > threshold: {threshold:.1f})")
+                        cpr_logger.info(f"Filtered oversized box {i} (area: {box_area:.1f} > threshold: {threshold:.1f})")
                         continue
                 
                 # Calculate features
@@ -112,7 +113,7 @@ class RoleClassifier:
                 })
             
             except Exception as e:
-                print(f"Error processing detection {i}: {e}")
+                cpr_logger.info(f"Error processing detection {i}: {e}")
                 continue
 
         # Step 2: Identify the patient (horizontal posture)
@@ -160,7 +161,7 @@ class RoleClassifier:
                     keypoints = self.rescuer_processed_results["keypoints"]
                     annotator.kpts(keypoints, shape=frame.shape[:2])
             except Exception as e:
-                print(f"Error drawing rescuer: {str(e)}")
+                cpr_logger.info(f"Error drawing rescuer: {str(e)}")
 
         # Draw patient (B) with red box and keypoints
         if self.patient_processed_results:
@@ -172,7 +173,7 @@ class RoleClassifier:
                     keypoints = self.patient_processed_results["keypoints"]
                     annotator.kpts(keypoints, shape=frame.shape[:2])
             except Exception as e:
-                print(f"Error drawing patient: {str(e)}")
+                cpr_logger.info(f"Error drawing patient: {str(e)}")
 
         return annotator.result()
     

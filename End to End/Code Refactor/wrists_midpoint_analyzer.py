@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from keypoints import CocoKeypoints
+from logging_config import cpr_logger
 
 class WristsMidpointAnalyzer:
     """Analyzes and tracks wrist midpoints for rescuer"""
@@ -34,7 +35,7 @@ class WristsMidpointAnalyzer:
             return midpoint
             
         except Exception as e:
-            print(f"Midpoint tracking error: {e}")
+            cpr_logger.info(f"Midpoint tracking error: {e}")
             return None
 
     def draw_midpoint(self, frame):
@@ -54,7 +55,7 @@ class WristsMidpointAnalyzer:
 
             return frame
         except Exception as e:
-            print(f"Midpoint drawing error: {e}")
+            cpr_logger.info(f"Midpoint drawing error: {e}")
             return frame
     
     def reset_midpoint_history(self):

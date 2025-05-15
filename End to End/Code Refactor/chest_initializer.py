@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from keypoints import CocoKeypoints
+from logging_config import cpr_logger
 
 class ChestInitializer:
     """Handles chest point detection with validations in estimation."""
@@ -59,7 +60,7 @@ class ChestInitializer:
             return (cx, cy, cw, ch)
 
         except (IndexError, TypeError, ValueError) as e:
-            print(f"Chest estimation error: {e}")
+            cpr_logger.info(f"Chest estimation error: {e}")
             return None
 
     def estimate_chest_region_weighted_avg(self, frame_width, frame_height, window_size=60, min_samples=3):
@@ -118,7 +119,7 @@ class ChestInitializer:
             )
             
         except Exception as e:
-            print(f"Chest region estimation error: {e}")
+            cpr_logger.info(f"Chest region estimation error: {e}")
             return None
     
     def draw_expected_chest_region(self, frame):

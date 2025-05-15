@@ -2,6 +2,7 @@ import threading
 from queue import Queue
 import queue
 import cv2
+from logging_config import cpr_logger
 
 class ThreadedCamera:
     def __init__(self, source, requested_fps = 30):
@@ -10,7 +11,7 @@ class ThreadedCamera:
         self.cap = cv2.VideoCapture(source)
         if not self.cap.isOpened():
             raise ValueError(f"[VIDEO CAPTURE] Unable to open camera source: {source}")
-        print(f"[VIDEO CAPTURE] Camera source opened: {source}")
+        cpr_logger.info(f"[VIDEO CAPTURE] Camera source opened: {source}")
 
         # Attempt to configure the camera to the requested FPS
         # Which is set to the value we have been working on with recorded videos
@@ -22,47 +23,56 @@ class ThreadedCamera:
         actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.fps = actual_fps
 
-        print(f"[VIDEO CAPTURE] Requested FPS: {requested_fps}, Set Success: {set_success}, Actual FPS: {actual_fps}")
+        cpr_logger.info(f"[VIDEO CAPTURE] Requested FPS: {requested_fps}, Set Success: {set_success}, Actual FPS: {actual_fps}")
 
         # The buffer should be able to hold a lag of up to 2 seconds
-        queue_size = int(actual_fps * 2)
+        number_of_seconds_to_buffer = 5
+        queue_size = int(actual_fps * number_of_seconds_to_buffer)
         self.q = Queue(maxsize=queue_size)
-        print(f"[VIDEO CAPTURE] Queue size: {queue_size}")
+        cpr_logger.info(f"[VIDEO CAPTURE] Queue size: {queue_size}")
 
         # Set a flag to indicate that the camera is running
         self.running = threading.Event()
         self.running.set()  # Initial state = running
-        print(f"[VIDEO CAPTURE] Camera running: {self.running.is_set()}")
+        cpr_logger.info(f"[VIDEO CAPTURE] Camera running: {self.running.is_set()}")
+
+        self.number_of_dropped_frames = 0
+
+        self.thread = None
+
+    def start_capture(self):
+        # Clear any existing frames in queue
+        while not self.q.empty():
+            self.q.get()
 
         # threading.Thread() initialize a new thread
         # target=self._reader specify the method (_reader) the thread will execute
         self.thread = threading.Thread(target=self._reader)
-        print(f"[VIDEO CAPTURE] Thread initialized: {self.thread}")
+        cpr_logger.info(f"[VIDEO CAPTURE] Thread initialized: {self.thread}")
         
         # Set the thread as a daemon thread:
         #   Daemon threads automatically exit when the main program exits
         #   They run in the background and don't block program termination
         self.thread.daemon = True
-        print(f"[VIDEO CAPTURE] Thread daemon: {self.thread.daemon}")
+        cpr_logger.info(f"[VIDEO CAPTURE] Thread daemon: {self.thread.daemon}")
 
         # Start the thread execution:
         #   Call the _reader method in parallel with the main program
         self.thread.start()
 
-        self.number_of_dropped_frames = 0
 
     def _reader(self):
         while self.running.is_set():
             ret, frame = self.cap.read()
             if not ret:
-                print("Camera disconnected")
+                cpr_logger.info("Camera disconnected")
                 self.q.put(None)  # Sentinel for clean exit
                 break
                 
             try:
                 self.q.put(frame, timeout=0.1)
             except queue.Full:
-                print("Frame dropped")
+                cpr_logger.info("Frame dropped")
                 self.number_of_dropped_frames += 1
 
     def read(self):
@@ -70,7 +80,7 @@ class ThreadedCamera:
 
     def release(self):
 
-        print(f"Number of dropped frames: {self.number_of_dropped_frames}")
+        cpr_logger.info(f"Number of dropped frames: {self.number_of_dropped_frames}")
         
         self.running.clear()
         
@@ -81,7 +91,7 @@ class ThreadedCamera:
         self.thread.join(timeout=1.0)
         
         if self.thread.is_alive():
-            print("Warning: Thread didn't terminate cleanly")
+            cpr_logger.info("Warning: Thread didn't terminate cleanly")
         # Removed redundant self.cap.release()
 
     def isOpened(self):
