@@ -32,6 +32,8 @@ class PostureAnalyzer:
 
         self.error_regions = []
 
+        self.warnings = []
+
     def _calculate_angle(self, a, b, c):
         """Calculate angle between three points"""
         try:

@@ -17,30 +17,24 @@ from posture_analyzer import PostureAnalyzer
 from wrists_midpoint_analyzer import WristsMidpointAnalyzer
 from shoulders_analyzer import ShouldersAnalyzer
 from graph_plotter import GraphPlotter
+from threaded_camera import ThreadedCamera
 
 class CPRAnalyzer:
     """Main CPR analysis pipeline with execution tracing"""
     
-    def __init__(self, video_path):
-        print(f"\n[INIT] Initializing CPR Analyzer for: {video_path}")
+    def __init__(self, source, requested_fps, output_video_path):
+        print(f"\n[INIT] Initializing CPR Analyzer")
         
-        #& Open video file
-        self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            print("[ERROR] Failed to open video file")
-            return
-        print("[INIT] Video file opened successfully")
+        #& Open the camera source and get the FPS
+        self.cap = ThreadedCamera(source, requested_fps)
+        self.fps = self.cap.fps
+        print(f"[INIT] Camera FPS: {self.fps}")
 
         #& Generate output path with MP4 extension
-        self.base = os.path.splitext(video_path)[0]
-        self.output_video_path = os.path.abspath(f"{self.base}_processed.mp4")
+        self.output_video_path = output_video_path
         self.video_writer = None
         self._writer_initialized = False
-        print(f"[VIDEO WRITER] Output path: {self.output_video_path}")
-
-        #& Get video properties
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        print(f"[INIT] Video FPS: {self.fps}")
+        print(f"[INIT] Output path: {self.output_video_path}")
         
         #& Initialize system components
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
@@ -66,12 +60,6 @@ class CPRAnalyzer:
         self.prev_pose_results = None
         print("[INIT] Previous results initialized")
 
-        #& Workaround for minor glitches
-        self.consecutive_frames_with_posture_errors = 0
-
-        #& Initialize variables for reporting warnings
-        self.posture_errors_for_current_error_region = set()
-
         #& Fundamental timing parameters (in seconds)
         self.MIN_ERROR_DURATION = 1.0    # Require sustained errors for 1 second
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
@@ -91,23 +79,27 @@ class CPRAnalyzer:
         assert self.MIN_ERROR_DURATION >= self.SAMPLING_INTERVAL, \
             f"Error detection window ({self.MIN_ERROR_DURATION}s) must be ≥ sampling interval ({self.SAMPLING_INTERVAL}s)"
 
-        print(f"[INIT] Temporal alignment:")
+        print(f"\n[INIT] Temporal alignment:")
         print(f" - {self.SAMPLING_INTERVAL}s sampling → {self.sampling_interval_frames} frames")
         print(f" - {self.MIN_ERROR_DURATION}s error detection → {self.error_threshold_frames} samples")
         print(f" - {self.REPORTING_INTERVAL}s reporting → {self.reporting_interval_frames} samples")
 
-        #& Warning display parameters
-        self.rate_and_depth_warnings_counter = 0
-        
-        # Calculate display duration based on reporting interval (now frame-rate agnostic)
-        self.rate_and_depth_warnings_display_duration = \
-            int((self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL / 2))  # Auto-calculate based on timing params
-        
-        print(f"[INIT] Warning display duration: {self.rate_and_depth_warnings_display_duration} samples "
-            f"({self.rate_and_depth_warnings_display_duration * self.SAMPLING_INTERVAL:.1f}s)")
-        
+        #& Workaround for minor glitches
+        # A frame is accepted as long as this counter does not exceed the error_threshold_frames set above.
+        self.consecutive_frames_with_posture_errors = 0
+        print("[INIT] Consecutive frames with posture errors initialized")
+
+        #& Initialize variables for reporting warnings
+        # This variable is used when plotting the graph at the end after the whole video is processed.
+        self.posture_errors_for_current_error_region = set()
+        print("[INIT] Posture errors for current error region initialized")
+
+        #& Initialize variables used in reporting warnings frame by frame (not the graph)
         self.posture_warnings_from_current_frame = []
+        print("[INIT] Posture warnings from current frame initialized")
+
         self.rate_and_depth_warnings_from_the_last_report = []
+        print("[INIT] Rate and depth warnings from the last report initialized")
 
     def _initialize_video_writer(self, frame):
         """Initialize writer with safe fallback options"""
@@ -118,12 +110,10 @@ class CPRAnalyzer:
         for codec, ext, fmt in [('avc1', 'mp4', 'mp4v'),  # H.264
                                 ('MJPG', 'avi', 'avi'), 
                                 ('XVID', 'avi', 'avi')]:
-            test_path = os.path.abspath(f"{self.base}_processed.{ext}")
             fourcc = cv2.VideoWriter_fourcc(*codec)
-            writer = cv2.VideoWriter(test_path, fourcc, effective_fps, (width, height))
+            writer = cv2.VideoWriter(self.output_video_path, fourcc, effective_fps, (width, height))
             
             if writer.isOpened():
-                self.output_video_path = test_path
                 self.video_writer = writer
                 self._writer_initialized = True
                 print(f"[VIDEO WRITER] Initialized with {codec} codec")
@@ -151,16 +141,16 @@ class CPRAnalyzer:
             mini_chunk_start_frame_index = None
             mini_chunk_end_frame_index = 0
 
+            frame_counter = -1
+
+            print(f"[RUN ANALYSIS] Initialized variables")
+
             print("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
             while self.cap.isOpened():
-                #& Always advance to next frame first
-                ret = self.cap.grab()  # Faster than read() for skipping
-                if not ret: break
-                
-                #& Get frame number
-                # Retrieve the current position of the video frame being processed in the video capture object (self.cap).
-                frame_counter = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                #& Get frame from camera queue
+                frame = self.cap.read()
+                frame_counter += 1
                 print(f"\n[FRAME {int(frame_counter)}]")
                 
 				#& Check if you want to skip the frame
@@ -172,10 +162,6 @@ class CPRAnalyzer:
                     print(f"[SKIP FRAME] Skipping frame {int(frame_counter)}") 
                     continue
                 
-                #& Retrieve and process frame
-                _, frame = self.cap.retrieve()
-                print(f"[RUN ANALYSIS] Retrieved frame")
-                
                 #& Rotate frame
                 frame = self._handle_frame_rotation(frame)
                 print(f"[RUN ANALYSIS] Rotated frame")
@@ -186,7 +172,7 @@ class CPRAnalyzer:
                 # - is_complete_chunk: True if a "Posture Error" occurs in the frame, False otherwise.
                 # - accept_frame: True if the frame is accepted for further processing, False otherwise.
                 # Not that a frame containing an error could be accepted if the number of consecutive frames with errors is less than the threshold.
-                is_complete_chunk, accept_frame, posture_warnings = self._process_frame(frame)
+                is_complete_chunk, accept_frame, posture_warnings, has_appended_midpoint = self._process_frame(frame)
                 self.posture_warnings_from_current_frame = posture_warnings
                 print(f"[RUN ANALYSIS] Processed frame")
                 
@@ -198,24 +184,12 @@ class CPRAnalyzer:
 
                 if processed_frame is not None:
                     frame = processed_frame
-                
-                if (self.rate_and_depth_warnings_counter > 0) and accept_frame:
-                    self._get_rate_and_depth_warnings()
-
-                    self.rate_and_depth_warnings_counter -= 1
-                    print(f"[RUN ANALYSIS] Rate and depth warnings counter decremented, the remaining time is {self.rate_and_depth_warnings_counter} frames")
-
-                if (self.rate_and_depth_warnings_counter >= 0) and not accept_frame:
-                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                    self.rate_and_depth_warnings_from_the_last_report = []
-                    self.rate_and_depth_warnings_counter = 0
-                    print(f"[RUN ANALYSIS] Rate and depth warnings counter reset")
 
                 #& Set the chunk start frame index for the first chunk
                 # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
                 # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
                 # This is why the first chunk starts from the first frame that has been processed successfully.
-                if (processed_frame is not None) and first_time_to_have_a_proccessed_frame:
+                if (has_appended_midpoint is True) and first_time_to_have_a_proccessed_frame:
                     first_time_to_have_a_proccessed_frame = False
                     chunk_start_frame_index = frame_counter
                     mini_chunk_start_frame_index = frame_counter
@@ -225,7 +199,7 @@ class CPRAnalyzer:
                 # When a "Posture Error" occurs, a chunk is considered complete, and the program becomes ready to start a new chunk.
                 # is_complete_chunk is returned as true for every frame that has a "Posture Error" in it, and false for every other frame.
                 # This is why we need to wait for a frame with a false is_complete_chunk to start a new chunk.
-                if (waiting_to_start_new_chunk) and (not is_complete_chunk):
+                if (waiting_to_start_new_chunk) and (not is_complete_chunk) and (has_appended_midpoint is True):
                     waiting_to_start_new_chunk = False
                     chunk_start_frame_index = frame_counter
                     mini_chunk_start_frame_index = frame_counter
@@ -277,10 +251,8 @@ class CPRAnalyzer:
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
                     print(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history")
 
-                    self.rate_and_depth_warnings_counter = self.rate_and_depth_warnings_display_duration 
-                    print(f"[RUN ANALYSIS] Rate and depth warnings counter set")
-
-                    print(f"[RUN ANALYSIS] Added rate and depth warning to processed frame")
+                    self._get_rate_and_depth_warnings()
+                    print(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
 
                 #& Initialize video writer if not done yet
                 if frame is not None and not self._writer_initialized:
@@ -370,6 +342,8 @@ class CPRAnalyzer:
         #* Chunk Completion Check
         is_complete_chunk = False
         accept_frame = True
+
+        has_appended_midpoint = False
         
         #& Pose Estimation
         pose_results = self.pose_estimator.detect_poses(frame)
@@ -383,7 +357,7 @@ class CPRAnalyzer:
         
         if not pose_results:
             print("[POSE ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame, warnings, has_appended_midpoint
         
         #& Rescuer and Patient Classification
         rescuer_processed_results, patient_processed_results = self.role_classifier.classify_roles(pose_results, self.prev_rescuer_processed_results, self.prev_patient_processed_results)
@@ -403,7 +377,7 @@ class CPRAnalyzer:
         
         if not rescuer_processed_results or not patient_processed_results:
             print("[ROLE CLASSIFICATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame, warnings, has_appended_midpoint
              
         #^ Set Params in Role Classifier (to draw later)
         self.role_classifier.rescuer_processed_results = rescuer_processed_results
@@ -422,7 +396,7 @@ class CPRAnalyzer:
 
         if not chest_params:
             print("[CHEST ESTIMATION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame, warnings, has_appended_midpoint
 
         #^ Set Params in Chest Initializer (to draw later)
         self.chest_initializer.chest_params = chest_params
@@ -470,10 +444,11 @@ class CPRAnalyzer:
         
         if not midpoint:
             print("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
-            return is_complete_chunk, accept_frame, warnings
+            return is_complete_chunk, accept_frame, warnings, has_appended_midpoint
 
         if accept_frame:
             #^ Set Params in Role Classifier (to draw later)
+            has_appended_midpoint = True
             self.wrists_midpoint_analyzer.midpoint = midpoint
             self.wrists_midpoint_analyzer.midpoint_history.append(midpoint)
             print(f"[WRIST MIDPOINT DETECTION] Updated wrist midpoint analyzer with new results")
@@ -498,7 +473,7 @@ class CPRAnalyzer:
                 if num_warnings_after > num_warnings_before:
                     print(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
 
-        return is_complete_chunk, accept_frame, warnings
+        return is_complete_chunk, accept_frame, warnings, has_appended_midpoint
     
     def _compose_frame(self, frame, accept_frame):
         # Chest Region
@@ -516,7 +491,7 @@ class CPRAnalyzer:
                 # Midpoint
                 frame = self.wrists_midpoint_analyzer.draw_midpoint(frame)   
                 print(f"[VISUALIZATION] Drawn midpoint")  
-        
+    
         return frame
 
     def _calculate_rate_and_depth_for_chunk(self, chunk_start_frame_index, chunk_end_frame_index):
@@ -558,11 +533,13 @@ class CPRAnalyzer:
 
 if __name__ == "__main__":
     print(f"\n[MAIN] CPR Analysis Started")
-
-    video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    
+    source = "https://192.168.1.9:8080/video"  # IP camera URL
+    requested_fps = 30
+    output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     
     initialization_start_time = time.time()
-    analyzer = CPRAnalyzer(video_path)
+    analyzer = CPRAnalyzer(source, requested_fps, output_video_path)
     initialization_end_time = time.time()
     initialization_elapsed_time = initialization_end_time - initialization_start_time
     
