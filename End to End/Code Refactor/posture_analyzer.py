@@ -28,7 +28,7 @@ class PostureAnalyzer:
 
         self.posture_errors_for_all_error_region = []
 
-        self.error_regions = []
+        self.posture_warnings_regions = []
 
         self.warnings = []
 
@@ -219,7 +219,7 @@ class PostureAnalyzer:
             region_end_frame (int): Ending frame index of error region  
             errors (set): Posture errors detected in this region
         """
-        self.error_regions.append({
+        self.posture_warnings_regions.append({
             'start_frame': region_start_frame,
             'end_frame': region_end_frame,
             'errors': errors.copy()

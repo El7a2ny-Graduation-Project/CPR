@@ -13,27 +13,27 @@ class GraphPlotter:
         self.chunks_depth = []
         self.chunks_rate = []
         self.chunks_start_and_end_indices = []
-        self.error_regions = []
+        self.posture_warnings_regions = []
         self.sampling_interval_in_frames = 0
         self.fps = None  # Added FPS attribute
 
-    def _assign_graph_data(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps):
+    def _assign_graph_data(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps):
         """Assign data members for the class"""
         self.chunks_y_preprocessed = chunks_y_preprocessed
         self.chunks_peaks = chunks_peaks
         self.chunks_depth = chunks_depth
         self.chunks_rate = chunks_rate
         self.chunks_start_and_end_indices = chunks_start_and_end_indices
-        self.error_regions = error_regions
+        self.posture_warnings_regions = posture_warnings_regions
         self.sampling_interval_in_frames = sampling_interval_in_frames
         self.fps = fps  # Store FPS
 
-        cpr_logger.info(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.error_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames and FPS {self.fps}")
+        cpr_logger.info(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.posture_warnings_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames and FPS {self.fps}")
 
-    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps):
+    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps):
         """Plot combined analysis with connected chunks and proper error regions"""
         
-        self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, error_regions, sampling_interval_in_frames, fps)
+        self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps)
         cpr_logger.info("[Graph Plotter] Starting to plot motion curve for all chunks")
         
         if not self.chunks_start_and_end_indices:
@@ -60,8 +60,8 @@ class GraphPlotter:
             prev_last_point, prev_chunk_end = self._plot_single_chunk(ax, chunk, idx, prev_last_point, prev_chunk_end)
         
         # Convert error regions to time tuples for plotting
-        computed_error_regions = [(er['start_frame']/self.fps, er['end_frame']/self.fps) for er in self.error_regions]
-        cpr_logger.info(f"[Graph Plotter] Received {len(self.error_regions)} error regions")
+        computed_error_regions = [(er['start_frame']/self.fps, er['end_frame']/self.fps) for er in self.posture_warnings_regions]
+        cpr_logger.info(f"[Graph Plotter] Received {len(self.posture_warnings_regions)} error regions")
         
         self._print_analysis_details(sorted_chunks)
         self._plot_error_regions(ax, computed_error_regions)
@@ -144,7 +144,7 @@ class GraphPlotter:
             ax.axvspan(start_sec, end_sec, color='gray', alpha=0.2, label='Posture Errors' if idx == 0 else "")
             
             # Annotate error text
-            region_data = self.error_regions[idx]
+            region_data = self.posture_warnings_regions[idx]
             if region_data['errors']:
                 error_text = "Errors:\n" + "\n".join(region_data['errors'])
                 mid_time = (start_sec + end_sec) / 2
@@ -177,7 +177,7 @@ class GraphPlotter:
             display_idx += 1
 
         cpr_logger.info(f"\n\n=== Error Region Analysis ===")
-        for i, region in enumerate(self.error_regions):  # Updated to match actual attribute name
+        for i, region in enumerate(self.posture_warnings_regions):  # Updated to match actual attribute name
             start_frame = region['start_frame']
             end_frame = region['end_frame']
             errors = region['errors']

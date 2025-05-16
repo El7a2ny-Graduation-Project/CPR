@@ -22,7 +22,7 @@ class CPRAnalyzer:
     """Main CPR analysis pipeline with execution tracing"""
     
     def __init__(self, source, requested_fps, output_video_path):
-        cpr_logger.info(f"\n[INIT] Initializing CPR Analyzer")
+        cpr_logger.info(f"[INIT] Initializing CPR Analyzer")
 
         #& Frame counter
         self.frame_counter = -1
@@ -151,7 +151,7 @@ class CPRAnalyzer:
         
     def run_analysis(self):
         try:
-            cpr_logger.info("\n[RUN ANALYSIS] Starting analysis")
+            cpr_logger.info("[RUN ANALYSIS] Starting analysis")
             
             #& Client Connection
             # Wait for client connection before proceeding
@@ -181,7 +181,7 @@ class CPRAnalyzer:
                 #& Increment frame counter
                 self.frame_counter += 1
 
-                cpr_logger.info(f"\n[FRAME {int(self.frame_counter)}]")
+                cpr_logger.info(f"[FRAME {int(self.frame_counter)}]")
                 
 				#& Check if you want to skip the frame
                 if self.frame_counter % self.sampling_interval_frames != 0:    
@@ -326,7 +326,7 @@ class CPRAnalyzer:
                                 
                 #& Check if the user wants to quit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    cpr_logger.info("\n[RUN ANALYSIS] 'q' pressed, exiting loop.")
+                    cpr_logger.info("[RUN ANALYSIS] 'q' pressed, exiting loop.")
                     break
 
             main_loop_end_time = time.time()
@@ -573,10 +573,10 @@ class CPRAnalyzer:
         cpr_logger.info(f"[VISUALIZATION] Rate and depth warnings data: {self.rate_and_depth_warnings_from_the_last_report}")
 
 if __name__ == "__main__":
-    cpr_logger.info(f"\n[MAIN] CPR Analysis Started")
+    cpr_logger.info(f"[MAIN] CPR Analysis Started")
     
     # source = "https://192.168.1.9:8080/video"  # IP camera URL
-    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\2.mp4"
+    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\1.mp4"
     # source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
