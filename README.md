@@ -14,3 +14,6 @@ All notes for GP2 can be found [here](https://thrilling-replace-8f2.notion.site/
   - [ ] Correct rate and depth calculations.
 - [ ] Implement the following:
   - [ ] Integrating the ping pong ball logic here for testing.
+
+## Fatema's Notes to Self
+- Formated warnings some times contain posture and metric warnings (check 2.mp4)
