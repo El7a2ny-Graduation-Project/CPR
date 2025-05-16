@@ -211,7 +211,7 @@ class PostureAnalyzer:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
                     cv2.LINE_AA)
     
-    def assign_error_region_data(self, region_start_frame, region_end_frame, errors):
+    def assign_posture_warnings_region_data(self, region_start_frame, region_end_frame, errors):
         """Capture error region data for later analysis
         
         Args:

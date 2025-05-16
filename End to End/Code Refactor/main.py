@@ -24,10 +24,14 @@ class CPRAnalyzer:
     def __init__(self, source, requested_fps, output_video_path):
         cpr_logger.info(f"\n[INIT] Initializing CPR Analyzer")
 
+        #& Frame counter
+        self.frame_counter = -1
+        cpr_logger.info(f"[INIT] Frame counter initialized")
+
         #& Add socket server
         self.socket_server = AnalysisSocketServer()
         self.socket_server.start_server()
-        cpr_logger.info("[INIT] Socket server started")
+        cpr_logger.info(f"[INIT] Socket server started")
         
         #& Open the camera source and get the FPS
         self.cap = ThreadedCamera(source, requested_fps)
@@ -56,6 +60,11 @@ class CPRAnalyzer:
         self.graph_plotter = GraphPlotter()
         cpr_logger.info("[INIT] System components initialized")
 
+        #& Warm up pose estimator with dummy data
+        dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        self.pose_estimator.detect_poses(dummy_frame)  # Force model loading
+        cpr_logger.info("[INIT] Pose estimator warmed up with dummy data")
+
         #& Keep track of previous results for continuity
         self.prev_rescuer_processed_results = None
         self.prev_patient_processed_results = None
@@ -69,21 +78,22 @@ class CPRAnalyzer:
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
         self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
 
-        # Derived frame counts (calculated once during initialization)
+        # Derived frame counts 
         self.sampling_interval_frames = int(round(self.fps * self.SAMPLING_INTERVAL))
         self.error_threshold_frames = int(self.MIN_ERROR_DURATION / self.SAMPLING_INTERVAL)
         self.reporting_interval_frames = int(self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL)
 
-        # Enhanced validation using ratio checking
+        # For cleaner feedback, the reporting interval must be an exact multiple of the sampling interval.
         ratio = self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL
         assert math.isclose(ratio, round(ratio)), \
             f"Reporting interval ({self.REPORTING_INTERVAL}) must be an exact multiple of "\
             f"sampling interval ({self.SAMPLING_INTERVAL}). Actual ratio: {ratio:.2f}"
 
+        # To be able to detect an error, the error detection window must be greater than or equal to the sampling interval.
         assert self.MIN_ERROR_DURATION >= self.SAMPLING_INTERVAL, \
             f"Error detection window ({self.MIN_ERROR_DURATION}s) must be ≥ sampling interval ({self.SAMPLING_INTERVAL}s)"
 
-        cpr_logger.info(f"\n[INIT] Temporal alignment:")
+        cpr_logger.info(f"[INIT] Temporal alignment:")
         cpr_logger.info(f" - {self.SAMPLING_INTERVAL}s sampling → {self.sampling_interval_frames} frames")
         cpr_logger.info(f" - {self.MIN_ERROR_DURATION}s error detection → {self.error_threshold_frames} samples")
         cpr_logger.info(f" - {self.REPORTING_INTERVAL}s reporting → {self.reporting_interval_frames} samples")
@@ -95,21 +105,26 @@ class CPRAnalyzer:
 
         #& Initialize variables for reporting warnings
         # This variable is used when plotting the graph at the end after the whole video is processed.
-        self.posture_errors_for_current_error_region = set()
-        cpr_logger.info("[INIT] Posture errors for current error region initialized")
+        self.posture_warnings_for_current_posture_warnings_region = set()
+        cpr_logger.info("[INIT] Posture errors for current posture warnings region initialized")
 
         self.rate_and_depth_warnings_from_the_last_report = []
         cpr_logger.info("[INIT] Rate and depth warnings from the last report initialized")
 
-         # Warm up pose estimator with dummy data
-        dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        self.pose_estimator.detect_poses(dummy_frame)  # Force model loading
-        cpr_logger.info("[INIT] Pose estimator initialized")
+        #& Chunk and mini chunk management (Indexes and Flags) 
+        self.has_not_processed_a_frame_successfully_before = True
+        self.waiting_to_start_new_chunk = False
 
-        #& Error Regions
-        self.prev_is_this_frame_part_of_an_error_region = False
-        self.error_region_start_frame_index = None
-        self.error_region_end_frame_index = None
+        self.chunk_start_frame_index = 0
+        self.chunk_end_frame_index = 0
+
+        self.mini_chunk_start_frame_index = None
+        self.mini_chunk_end_frame_index = 0
+
+        #& Posture warnings region management
+        self.prev_is_this_frame_part_of_a_posture_warnings_region = False
+        self.posture_warnings_region_start_frame_index = None
+        self.posture_warnings_region_end_frame_index = None
 
     def _initialize_video_writer(self, frame):
         """Initialize writer with safe fallback options"""
@@ -137,58 +152,50 @@ class CPRAnalyzer:
     def run_analysis(self):
         try:
             cpr_logger.info("\n[RUN ANALYSIS] Starting analysis")
+            
+            #& Client Connection
             # Wait for client connection before proceeding
             if not self.socket_server.wait_for_connection(timeout=120):
                 cpr_logger.info("[ERROR] No client connected within 60 seconds")
                 return
+            cpr_logger.info("[RUN ANALYSIS] Client connected")
 
+            #& Video Capture
             # Start camera capture AFTER client connects
             self.cap.start_capture()
             cpr_logger.info("[RUN ANALYSIS] Camera capture started")
 
-            main_loop_start_time = time.time()
-
-            #& Initialize Variables
-            # Handling chunks & mini chunks
-            first_time_to_have_a_proccessed_frame = True
-            waiting_to_start_new_chunk = False
-
-            chunk_start_frame_index = 0
-            chunk_end_frame_index = 0
-
-            mini_chunk_start_frame_index = None
-            mini_chunk_end_frame_index = 0
-
-            frame_counter = -1
-
-            cpr_logger.info(f"[RUN ANALYSIS] Initialized variables")
-
-            cpr_logger.info("[RUN ANALYSIS] Starting main execution loop")
             #& Main execution loop
+            main_loop_start_time = time.time()
+            cpr_logger.info("[RUN ANALYSIS] Main loop started")
             while True:
-                one_iteration_start_time = time.time()
-
-                #& Get frame from camera queue
+                #& Read Frame
+                # Get frame from camera queue
                 frame = self.cap.read()
 
                 # Check for termination sentinel
                 if frame is None:
                     cpr_logger.info("Camera stream ended")
                     break
+                
+                #& Increment frame counter
+                self.frame_counter += 1
 
-                frame_counter += 1
-                cpr_logger.info(f"\n[FRAME {int(frame_counter)}]")
+                cpr_logger.info(f"\n[FRAME {int(self.frame_counter)}]")
                 
 				#& Check if you want to skip the frame
-                if frame_counter % self.sampling_interval_frames != 0:    
+                if self.frame_counter % self.sampling_interval_frames != 0:    
+                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                    #! We need to cache the formated warnings for processed frames
+
                     # Return the cashed warnings
                     formatted_warnings = self._format_warnings()
                     cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
-
+                    
                     self.socket_server.warning_queue.put(formatted_warnings)
                     cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
                     
-                    cpr_logger.info(f"[SKIP FRAME] Skipping frame {int(frame_counter)}") 
+                    cpr_logger.info(f"[SKIP FRAME] Skipping frame") 
                     continue
                 
                 #& Rotate frame
@@ -196,98 +203,94 @@ class CPRAnalyzer:
                 cpr_logger.info(f"[RUN ANALYSIS] Rotated frame")
 
                 #& Process frame
-                # If there are posture warnings, then we did not even attempt to detect the midpoint.
-                # If there were no posture warnings, we attempt to detect the midpoint which might either succeed or fail.
+                # If there are (sustained) posture warnings, then we did not even attempt to detect the midpoint.
+                # If there were no (sustained) posture warnings, we attempt to detect the midpoint which might either succeed or fail.
                 # This is why we need two variables to indicated what happened inside the process_frame function.
                 posture_warnings, has_appended_midpoint = self._process_frame(frame)
+                cpr_logger.info(f"[RUN ANALYSIS] Processed frame")
 
-                #& Error Region
+                #& Posture Warnings Region Management
                 # When a frame is accepted, its warnings -if any- are reset.
-                # So if the function did return any errors this means that the frame is not accepted and is part of an error region.
-                is_this_frame_part_of_an_error_region = len(posture_warnings) > 0
+                # So if the function did return any errors this means that the frame is not accepted and is part of an posture warnings region.
+                is_this_frame_part_of_a_posture_warnings_region = len(posture_warnings) > 0
 
-                # Then we need to decide if the frame marks a transition between a chunk region and an error region.
-                is_start_of_error_region = (not self.prev_is_this_frame_part_of_an_error_region) and is_this_frame_part_of_an_error_region
-                is_end_of_error_region = self.prev_is_this_frame_part_of_an_error_region and not is_this_frame_part_of_an_error_region
+                # Then we need to decide if the frame marks a transition between a chunk region and an posture warnings region.
+                is_start_of_posture_warnings_region = (not self.prev_is_this_frame_part_of_a_posture_warnings_region) and is_this_frame_part_of_a_posture_warnings_region
+                is_end_of_posture_warnings_region = self.prev_is_this_frame_part_of_a_posture_warnings_region and not is_this_frame_part_of_a_posture_warnings_region
                 
                 # Update the cached value for the next iteration
-                self.prev_is_this_frame_part_of_an_error_region = is_this_frame_part_of_an_error_region
+                self.prev_is_this_frame_part_of_a_posture_warnings_region = is_this_frame_part_of_a_posture_warnings_region
 
-                # If this is the start of an error region, set the start frame index
-                if is_start_of_error_region:
-                    self.error_region_start_frame_index = frame_counter
-                    cpr_logger.info(f"[RUN ANALYSIS] Start of error region detected at frame {int(frame_counter)}")
+                # If this is the start of an posture warnings region, set the start frame index
+                if is_start_of_posture_warnings_region:
+                    self.posture_warnings_region_start_frame_index = self.frame_counter
+                    cpr_logger.info(f"[RUN ANALYSIS] Start of posture warnings region detected")
                 
-                # If this is the end of an error region, set the end frame index and assign the error region data
-                if is_end_of_error_region:
-                    self.error_region_end_frame_index = frame_counter - 1
-                    cpr_logger.info(f"[RUN ANALYSIS] End of error region detected at frame {int(frame_counter)}")
+                # If this is the end of an posture warnings region, set the end frame index and assign the posture warnings region data
+                if is_end_of_posture_warnings_region:
+                    self.posture_warnings_region_end_frame_index = self.frame_counter - 1
+                    cpr_logger.info(f"[RUN ANALYSIS] End of posture warnings region detected")
 
-                    self.posture_analyzer.assign_error_region_data(
-                                self.error_region_start_frame_index,
-                                self.error_region_end_frame_index,
-                                self.posture_errors_for_current_error_region
+                    self.posture_analyzer.assign_posture_warnings_region_data(
+                                self.posture_warnings_region_start_frame_index,
+                                self.posture_warnings_region_end_frame_index,
+                                self.posture_warnings_for_current_posture_warnings_region
                             ) 
-                    cpr_logger.info(f"[RUN ANALYSIS] Assigned error region data")
+                    cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
 
-                    self.posture_errors_for_current_error_region.clear()
-                    cpr_logger.info(f"[RUN ANALYSIS] Reset posture errors for current error region")
-                
-                cpr_logger.info(f"[RUN ANALYSIS] Processed frame")
+                    self.posture_warnings_for_current_posture_warnings_region.clear()
+                    cpr_logger.info(f"[RUN ANALYSIS] Reset posture errors for current posture warnings region")
                 
                 #& Compose frame
                 # This function is responsible for drawing the data detected during the processing of the frame on it.
                 # The frame would not be displayed yet, just composed.
-                processed_frame = self._compose_frame(frame, not is_this_frame_part_of_an_error_region)
-                cpr_logger.info(f"[RUN ANALYSIS] Composed frame")
+                composed_frame = self._compose_frame(frame, is_this_frame_part_of_a_posture_warnings_region)
 
-                if processed_frame is not None:
-                    frame = processed_frame
+                if composed_frame is not None:
+                    frame = composed_frame
+                    cpr_logger.info(f"[RUN ANALYSIS] Frame composed successfully")
+                else:
+                    cpr_logger.info(f"[RUN ANALYSIS] Frame composition failed")
 
                 #& Set the chunk start frame index for the first chunk
-                # Along the video when a failure  in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
+                # Along the video when a failure in any step of the processing occurs, the variables are populated with the previous results to keep the analysis going.
                 # The problem occurs when the first few frames have a failure in the processing, and the variables are not populated yet.
                 # This is why the first chunk starts from the first frame that has been processed successfully.
-                if (has_appended_midpoint is True) and first_time_to_have_a_proccessed_frame:
-                    first_time_to_have_a_proccessed_frame = False
-                    chunk_start_frame_index = frame_counter
-                    mini_chunk_start_frame_index = frame_counter
+                if (has_appended_midpoint) and (self.has_not_processed_a_frame_successfully_before):
+                    self.has_not_processed_a_frame_successfully_before = False
+                    self.chunk_start_frame_index = self.frame_counter
+                    self.mini_chunk_start_frame_index = self.frame_counter
                     cpr_logger.info(f"[RUN ANALYSIS] First processed frame detected")
 
-                #& Set the chunk start frame index for the all chunks after the first one & append the errors detected in the error region before this chunk if any
-                # When a "Posture Error" occurs, a chunk is considered complete, and the program becomes ready to start a new chunk.
-                # is_this_frame_part_of_an_error_region is returned as true for every frame that has a "Posture Error" in it, and false for every other frame.
-                # This is why we need to wait for a frame with a false is_this_frame_part_of_an_error_region to start a new chunk.
-                if (waiting_to_start_new_chunk) and (not is_this_frame_part_of_an_error_region) and (has_appended_midpoint is True):
-                    waiting_to_start_new_chunk = False
-                    chunk_start_frame_index = frame_counter
-                    mini_chunk_start_frame_index = frame_counter
+                #& Start of a chunk or mini chunk
+                if (self.waiting_to_start_new_chunk) and (has_appended_midpoint):
+                    self.waiting_to_start_new_chunk = False
+                    self.chunk_start_frame_index = self.frame_counter
+                    self.mini_chunk_start_frame_index = self.frame_counter
                     cpr_logger.info(f"[RUN ANALYSIS] A new chunk is starting")
 
-                #& Process the current chunk or mini chunk if the conditions are met
-                process_chunk = (is_this_frame_part_of_an_error_region) and (not waiting_to_start_new_chunk) and (frame_counter != 0)
-                process_mini_chunk = (frame_counter % self.reporting_interval_frames == 0) and (frame_counter != 0) and (mini_chunk_start_frame_index is not None) and (not is_this_frame_part_of_an_error_region) 
+                #& End of a chunk or mini chunk
+                process_chunk = (is_this_frame_part_of_a_posture_warnings_region) and (not self.waiting_to_start_new_chunk) and (self.frame_counter != 0)
+                process_mini_chunk = (self.frame_counter % self.reporting_interval_frames == 0) and (self.frame_counter != 0) and (self.mini_chunk_start_frame_index is not None) and (not is_this_frame_part_of_a_posture_warnings_region) 
                
                 if process_chunk: 
                     cpr_logger.info(f"[RUN ANALYSIS] Chunk completion detected")
                     
-                    chunk_end_frame_index = frame_counter - 1                
+                    self.chunk_end_frame_index = self.frame_counter - 1                
                     cpr_logger.info(f"[RUN ANALYSIS] Determined the last frame of the chunk")
-                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                    self._calculate_rate_and_depth_for_chunk(chunk_start_frame_index, chunk_end_frame_index)
+                    self._calculate_rate_and_depth_for_chunk(self.chunk_start_frame_index, self.chunk_end_frame_index)
                     cpr_logger.info(f"[RUN ANALYSIS] Calculated metrics for the chunk")
 
                 elif process_mini_chunk:
                     cpr_logger.info(f"[RUN ANALYSIS] Mini chunk completion detected")
 
-                    mini_chunk_end_frame_index = frame_counter
+                    self.mini_chunk_end_frame_index = self.frame_counter
                     cpr_logger.info(f"[RUN ANALYSIS] Determined the last frame of the mini chunk")
-                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                    self._calculate_rate_and_depth_for_chunk(mini_chunk_start_frame_index, mini_chunk_end_frame_index)
+                    self._calculate_rate_and_depth_for_chunk(self.mini_chunk_start_frame_index, self.mini_chunk_end_frame_index)
                     cpr_logger.info(f"[RUN ANALYSIS] Calculated metrics for the mini chunk")                       
                         
                 if process_chunk or process_mini_chunk:
-                    waiting_to_start_new_chunk = True
+                    self.waiting_to_start_new_chunk = True
 
                     self.shoulders_analyzer.reset_shoulder_distances()
                     self.wrists_midpoint_analyzer.reset_midpoint_history()
@@ -325,10 +328,6 @@ class CPRAnalyzer:
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     cpr_logger.info("\n[RUN ANALYSIS] 'q' pressed, exiting loop.")
                     break
-
-                one_iteration_end_time = time.time()
-                one_iteration_elapsed_time = one_iteration_end_time - one_iteration_start_time
-                cpr_logger.info(f"[TIMING] One iteration elapsed time: {one_iteration_elapsed_time:.2f}s")
 
             main_loop_end_time = time.time()
             elapsed_time = main_loop_end_time - main_loop_start_time
@@ -369,7 +368,6 @@ class CPRAnalyzer:
     def _format_warnings(self, posture_warnings = []):
         """Combine warnings into a simple structured response"""
         return {
-            #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
             "status": "warning" if any([posture_warnings, self.rate_and_depth_warnings_from_the_last_report]) else "ok",
             "posture_warnings": list(posture_warnings),
             "rate_and_depth_warnings": self.rate_and_depth_warnings_from_the_last_report,
@@ -506,20 +504,20 @@ class CPRAnalyzer:
             cpr_logger.info(f"[SHOULDER DISTANCE] Updated shoulder distance analyzer with new results")
         else:
             #* Chunk Completion Check
-            num_warnings_before = len(self.posture_errors_for_current_error_region)
+            num_warnings_before = len(self.posture_warnings_for_current_posture_warnings_region)
 
             for warning in warnings:
                 
-                self.posture_errors_for_current_error_region.add(warning)
+                self.posture_warnings_for_current_posture_warnings_region.add(warning)
                 
-                num_warnings_after = len(self.posture_errors_for_current_error_region)
+                num_warnings_after = len(self.posture_warnings_for_current_posture_warnings_region)
                 
                 if num_warnings_after > num_warnings_before:
-                    cpr_logger.info(f"[POSTURE ANALYSIS] Added warning to current error region: {warning}") 
+                    cpr_logger.info(f"[POSTURE ANALYSIS] Added warning to current posture warnings region: {warning}") 
 
         return warnings, has_appended_midpoint
     
-    def _compose_frame(self, frame, accept_frame):
+    def _compose_frame(self, frame, is_this_frame_part_of_a_posture_warnings_region):
         # Chest Region
         if frame is not None:
             frame = self.chest_initializer.draw_expected_chest_region(frame)
@@ -531,7 +529,7 @@ class CPRAnalyzer:
             cpr_logger.info(f"[VISUALIZATION] Drawn warnings")
         
         if frame is not None:
-            if accept_frame:
+            if not is_this_frame_part_of_a_posture_warnings_region:
                 # Midpoint
                 frame = self.wrists_midpoint_analyzer.draw_midpoint(frame)   
                 cpr_logger.info(f"[VISUALIZATION] Drawn midpoint")  
@@ -563,7 +561,7 @@ class CPRAnalyzer:
                                                   self.metrics_calculator.chunks_depth, 
                                                   self.metrics_calculator.chunks_rate, 
                                                   self.metrics_calculator.chunks_start_and_end_indices, 
-                                                  self.posture_analyzer.error_regions, 
+                                                  self.posture_analyzer.posture_warnings_regions, 
                                                   self.sampling_interval_frames,
                                                   self.fps)
             cpr_logger.info("[PLOT] Full motion curve plotted")
@@ -571,7 +569,6 @@ class CPRAnalyzer:
             cpr_logger.info(f"[ERROR] Failed to plot full motion curve: {str(e)}")
   
     def _get_rate_and_depth_warnings(self):
-        #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         self.rate_and_depth_warnings_from_the_last_report = self.metrics_calculator.get_rate_and_depth_warnings()
         cpr_logger.info(f"[VISUALIZATION] Rate and depth warnings data: {self.rate_and_depth_warnings_from_the_last_report}")
 
