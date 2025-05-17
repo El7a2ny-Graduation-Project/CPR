@@ -4,15 +4,15 @@
 All notes for GP2 can be found [here](https://thrilling-replace-8f2.notion.site/GP-2-198751816986802088c7d036c7f4b927?pvs=4)
 
 ## TODO List for Real-Time CPR
-- [ ] Handle the following cases:
+- Handle the following cases:
   - [x] No correct postures.
-  - [ ] The reporting of very short chunks.
-  - [ ] The patient's head being on the left side.
-- [ ] Test the following:
+  - [x] The reporting of very short chunks.
+  - [x] The patient's head being on the left side.
+- Test the following:
   - [ ] Frame rotation.
   - [ ] Frame flipping.
   - [ ] Correct rate and depth calculations.
-- [ ] Implement the following:
+- [ ] Implement the following (in another branch):
   - [ ] Integrating the ping pong ball logic here for testing.
 
 ## Fatema's Notes to Self
