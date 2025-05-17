@@ -19,17 +19,6 @@ class PostureAnalyzer:
         self.left_arm_angle_threshold = left_arm_angle_threshold
         self.wrist_distance_threshold = wrist_distance_threshold
         
-        self.warning_positions = {
-            'right_arm_angle': (50, 50),
-            'left_arm_angle': (50, 100),
-            'one_handed': (50, 150),
-            'hands_not_on_chest': (50, 200)
-        }
-
-        self.posture_errors_for_all_error_region = []
-
-        self.warnings = []
-
     def _calculate_angle(self, a, b, c):
         """Calculate angle between three points"""
         try:
@@ -55,7 +44,7 @@ class PostureAnalyzer:
             avg_right = np.mean(self.right_arm_angles[-self.history_length_to_average:] if self.right_arm_angles else 0)
 
             if avg_right > self.right_arm_angle_threshold:
-                warnings.append("Right arm bent")
+                warnings.append("Right arm bent!")
 
             return warnings
                 
@@ -79,7 +68,7 @@ class PostureAnalyzer:
             avg_left = np.mean(self.left_arm_angles[-self.history_length_to_average:] if self.left_arm_angles else 0)
 
             if avg_left < self.left_arm_angle_threshold:
-                warnings.append("Left arm bent")
+                warnings.append("Left arm bent!")
 
             return warnings
                 
@@ -114,16 +103,17 @@ class PostureAnalyzer:
         """Check if hands are on the chest (returns warning)"""
         warnings = []
         try:
+            #! Revisit this condition
             # Check if hands are on the chest
             if wrists_midpoint is None or chest_params is None:
-                return ["Hands not on chest"]
+                return ["Hands not on chest!"]
             
             # Unpack parameters
             wrist_x, wrist_y = wrists_midpoint
             cx, cy, cw, ch = chest_params
             
             if not ((cx - cw/2 < wrist_x < cx + cw/2) and (cy - ch/2 < wrist_y < cy + ch/2)):
-                warnings.append("Hands not on chest")
+                warnings.append("Hands not on chest!")
                 
         except Exception as e:
             cpr_logger.info(f"Hands on chest check error: {e}")
@@ -138,74 +128,3 @@ class PostureAnalyzer:
         warnings += self._check_one_handed_cpr(keypoints)
         warnings += self._check_hands_on_chest(wrists_midpoint, chest_params)
         return warnings
-
-    def display_warnings(self, frame):
-        """Display posture warnings with colored background rectangles
-        
-        Args:
-            frame: Input image frame to draw warnings on
-            
-        Returns:
-            Frame with warnings and background rectangles drawn
-        """
-        if not self.warnings:
-            return frame
-
-        warning_config = {
-            "Right arm bent": {
-                "color": (52, 110, 235),  
-                "position": self.warning_positions['right_arm_angle'],
-                "text": "Right arm bent!"
-            },
-            "Left arm bent": {
-                "color": (52, 110, 235),  
-                "position": self.warning_positions['left_arm_angle'],
-                "text": "Left arm bent!"
-            },
-            "One-handed": {
-                "color": (27, 150, 70), 
-                "position": self.warning_positions['one_handed'],
-                "text": "One-handed CPR detected!"
-            },
-            "Hands not on chest": {
-                "color": (161, 127, 18),  
-                "position": self.warning_positions['hands_not_on_chest'],
-                "text": "Hands not on chest!"
-            }
-        }
-
-        try:
-            for warning_text, config in warning_config.items():
-                if any(warning_text in w for w in self.warnings):
-                    self._draw_warning_banner(
-                        frame=frame,
-                        text=config['text'],
-                        color=config['color'],
-                        position=config['position']
-                    )
-            
-        except Exception as e:
-            cpr_logger.info(f"Warning display error: {e}")
-        
-        return frame
-
-    def _draw_warning_banner(self, frame, text, color, position):
-        """Helper function to draw a single warning banner"""
-        (text_width, text_height), _ = cv2.getTextSize(
-            text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-        
-        x, y = position
-        # Calculate background rectangle coordinates
-        x1 = x - 10
-        y1 = y - text_height - 10
-        x2 = x + text_width + 10
-        y2 = y + 10
-        
-        # Draw background rectangle
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
-        
-        # Draw warning text
-        cv2.putText(frame, text, (x, y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
-                    cv2.LINE_AA)
-    

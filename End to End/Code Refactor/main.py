@@ -184,7 +184,7 @@ class CPRAnalyzer:
                 #& Increment frame counter
                 self.frame_counter += 1
 
-                cpr_logger.info(f"[FRAME {int(self.frame_counter)}]")
+                cpr_logger.info(f"\n[FRAME {int(self.frame_counter)}]")
                 
 				#& Check if you want to skip the frame
                 if self.frame_counter % self.sampling_interval_frames != 0:  
@@ -416,7 +416,7 @@ class CPRAnalyzer:
             self._plot_full_motion_curve_for_all_chunks()
             cpr_logger.info("[RUN ANALYSIS] Plotted full motion curve")
 
-            self.warnings_overlayer.add_warnings_to_processed_video(self.output_video_path, self.sampling_interval_frames, self.rate_and_depth_warnings)
+            self.warnings_overlayer.add_warnings_to_processed_video(self.output_video_path, self.sampling_interval_frames, self.rate_and_depth_warnings, self.posture_warnings)
             cpr_logger.info("[RUN ANALYSIS] Added warnings to processed video")
 
             report_and_plot_end_time = time.time()
