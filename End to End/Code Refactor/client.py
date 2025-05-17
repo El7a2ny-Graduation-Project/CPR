@@ -3,7 +3,7 @@ import json
 from logging_config import cpr_logger
 
 HOST = 'localhost'  # The server's hostname or IP address
-PORT = 65432        # The port used by the server
+PORT = 5000        # The port used by the server
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))

@@ -14,6 +14,7 @@ from posture_analyzer import PostureAnalyzer
 from wrists_midpoint_analyzer import WristsMidpointAnalyzer
 from shoulders_analyzer import ShouldersAnalyzer
 from graph_plotter import GraphPlotter
+from warnings_overlayer import WarningsOverlayer
 
 from threaded_camera import ThreadedCamera
 from analysis_socket_server import AnalysisSocketServer
@@ -59,6 +60,7 @@ class CPRAnalyzer:
         self.wrists_midpoint_analyzer = WristsMidpointAnalyzer()
         self.shoulders_analyzer = ShouldersAnalyzer()
         self.graph_plotter = GraphPlotter()
+        self.warnings_overlayer = WarningsOverlayer()
         cpr_logger.info("[INIT] System components initialized")
 
         #& Warm up pose estimator with dummy data
@@ -414,7 +416,7 @@ class CPRAnalyzer:
             self._plot_full_motion_curve_for_all_chunks()
             cpr_logger.info("[RUN ANALYSIS] Plotted full motion curve")
 
-            self.metrics_calculator.add_warnings_to_processed_video(self.output_video_path, self.sampling_interval_frames)
+            self.warnings_overlayer.add_warnings_to_processed_video(self.output_video_path, self.sampling_interval_frames, self.rate_and_depth_warnings)
             cpr_logger.info("[RUN ANALYSIS] Added warnings to processed video")
 
             report_and_plot_end_time = time.time()

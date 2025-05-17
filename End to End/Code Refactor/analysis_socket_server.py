@@ -7,7 +7,7 @@ from logging_config import cpr_logger
 import queue
 
 class AnalysisSocketServer:
-    def __init__(self, host='localhost', port=65432):
+    def __init__(self, host='localhost', port=5000):
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
