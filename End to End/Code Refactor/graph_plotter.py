@@ -151,6 +151,15 @@ class GraphPlotter:
                 ax.text(mid_time, np.mean(ax.get_ylim()), error_text,
                         ha='center', va='center', fontsize=9, color='red', alpha=0.8,
                         bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='red', alpha=0.7))
+        
+        # Add separators between consecutive error regions
+        sorted_regions = sorted(self.posture_warnings_regions, key=lambda x: x['start_frame'])
+        for i in range(1, len(sorted_regions)):
+            prev_er = sorted_regions[i-1]
+            current_er = sorted_regions[i]
+            separator_x = (prev_er['end_frame'] + 0.5) / self.fps
+            cpr_logger.info(f"[Graph Plotter] Adding error region separator at {separator_x:.2f} seconds")
+            ax.axvline(x=separator_x, color='orange', linestyle=':', linewidth=1.5)
     
     def _print_analysis_details(self, sorted_chunks):
         """Combined helper for printing chunks and error regions in seconds"""
