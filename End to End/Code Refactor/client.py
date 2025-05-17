@@ -6,6 +6,8 @@ from logging_config import cpr_logger
 HOST = 'localhost'  # The server's hostname or IP address
 PORT = 5000        # The port used by the server
 
+#! Not an error
+
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
     #^ Set as an error for cleaner logging purposes

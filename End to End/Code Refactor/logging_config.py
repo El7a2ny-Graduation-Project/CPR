@@ -2,7 +2,7 @@
 import logging
 
 # 1. Set default log level here (change this value as needed)
-DEFAULT_LOG_LEVEL = logging.ERROR  # Switch to logging.ERROR for errors-only by default
+DEFAULT_LOG_LEVEL = logging.INFO  # Switch to logging.ERROR for errors-only by default
 
 # 2. Configure logger with default level
 cpr_logger = logging.getLogger("CPR-Analyzer")

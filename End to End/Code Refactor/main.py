@@ -30,6 +30,7 @@ class CPRAnalyzer:
         self.frame_counter = -1
         cpr_logger.info(f"[INIT] Frame counter initialized")
 
+        #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
         #& Add socket server
         self.socket_server = AnalysisSocketServer()
         self.socket_server.start_server()
@@ -201,6 +202,7 @@ class CPRAnalyzer:
                     formatted_warnings = self._format_warnings()
                     cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
                     
+                    #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
                     self.socket_server.warning_queue.put(formatted_warnings)
                     cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
                     
@@ -388,6 +390,7 @@ class CPRAnalyzer:
                 formatted_warnings = self._format_warnings()
                 cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
 
+                #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
                 self.socket_server.warning_queue.put(formatted_warnings)
                 cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
                                 
@@ -406,6 +409,7 @@ class CPRAnalyzer:
         finally:
             report_and_plot_start_time = time.time()
             
+            #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
             self.socket_server.stop_server()
             cpr_logger.info("[CLEANUP] Socket server stopped")
 

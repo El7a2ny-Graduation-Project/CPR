@@ -32,6 +32,7 @@ class AnalysisSocketServer:
                 self.connection_event.set()  # Signal that connection was made
                 Thread(target=self._handle_client, args=(self.conn,), daemon=True).start()
             except Exception as e:
+                #! Not an error
                 cpr_logger.error(f"[SOCKET] Connection error: {str(e)}")
 
     def wait_for_connection(self, timeout=None):

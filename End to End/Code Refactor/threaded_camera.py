@@ -80,6 +80,7 @@ class ThreadedCamera:
         return self.q.get()
 
     def release(self):
+        #! Not an error
         cpr_logger.error(f"[VIDEO CAPTURE] Total frames: {self.number_of_total_frames}, Dropped frames: {self.number_of_dropped_frames}")
         
         self.running.clear()

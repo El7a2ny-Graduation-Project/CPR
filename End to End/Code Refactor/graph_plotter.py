@@ -30,56 +30,6 @@ class GraphPlotter:
 
         cpr_logger.info(f"[Graph Plotter] Data members assigned with {len(self.chunks_start_and_end_indices)} chunks and {len(self.posture_warnings_regions)} error regions for a sampling interval of {self.sampling_interval_in_frames} frames and FPS {self.fps}")
 
-    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps):
-        """Plot combined analysis with connected chunks and proper error regions"""
-        
-        self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps)
-        cpr_logger.info("[Graph Plotter] Starting to plot motion curve for all chunks")
-        
-        if not self.chunks_start_and_end_indices:
-            cpr_logger.info("[Graph Plotter] No chunk data available for plotting")
-            return
-
-        plt.figure(figsize=(16, 8))
-        ax = plt.gca()
-        
-        # Sort chunks chronologically
-        sorted_chunks = sorted(zip(self.chunks_start_and_end_indices, 
-                                 self.chunks_depth, 
-                                 self.chunks_rate),
-                                 key=lambda x: x[0][0])
-        cpr_logger.info(f"[Graph Plotter] Processing {len(sorted_chunks)} CPR chunks")
-
-        # Track previous chunk's last point and end frame
-        prev_last_point = None
-        prev_chunk_end = None
-
-        # Plot each chunk and handle connections
-        for idx, chunk in enumerate(sorted_chunks):
-            cpr_logger.info(f"[Graph Plotter] Rendering chunk {idx+1}/{len(sorted_chunks)}")
-            prev_last_point, prev_chunk_end = self._plot_single_chunk(ax, chunk, idx, prev_last_point, prev_chunk_end)
-        
-        # Convert error regions to time tuples for plotting
-        computed_error_regions = [(er['start_frame']/self.fps, er['end_frame']/self.fps) for er in self.posture_warnings_regions]
-        cpr_logger.info(f"[Graph Plotter] Received {len(self.posture_warnings_regions)} error regions")
-        
-        self._print_analysis_details(sorted_chunks)
-        self._plot_error_regions(ax, computed_error_regions)
-        
-        # Configure legend and layout
-        handles, labels = ax.get_legend_handles_labels()
-        unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
-        ax.legend(*zip(*unique), loc='upper right')
-
-        plt.xlabel("Time (seconds)")  # Updated label
-        plt.ylabel("Vertical Position (px)")
-        plt.title("Complete CPR Analysis with Metrics")
-        plt.grid(True)
-        plt.tight_layout()
-        cpr_logger.info(f"\n[Graph Plotter] Finalizing plot layout")
-        plt.show()
-        cpr_logger.info("[Graph Plotter] Plot display complete")
-
     def _plot_single_chunk(self, ax, chunk, idx, prev_last_point, prev_chunk_end):
         (start_frame, end_frame), depth, rate = chunk
         # Convert frames to time
@@ -201,3 +151,54 @@ class GraphPlotter:
                 f"Time {start_sec:.2f}s - {end_sec:.2f}s - {error_str}")
         
         cpr_logger.info(f"\n\n")
+
+    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps):
+        """Plot combined analysis with connected chunks and proper error regions"""
+        
+        self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps)
+        cpr_logger.info("[Graph Plotter] Starting to plot motion curve for all chunks")
+        
+        # Create figure even if there's only error regions to plot
+        plt.figure(figsize=(16, 8))
+        ax = plt.gca()
+
+        # Plot CPR chunks if they exist
+        if self.chunks_start_and_end_indices:
+            sorted_chunks = sorted(zip(self.chunks_start_and_end_indices, 
+                                self.chunks_depth, 
+                                self.chunks_rate),
+                                key=lambda x: x[0][0])
+            cpr_logger.info(f"[Graph Plotter] Processing {len(sorted_chunks)} CPR chunks")
+
+            prev_last_point = None
+            prev_chunk_end = None
+
+            for idx, chunk in enumerate(sorted_chunks):
+                cpr_logger.info(f"[Graph Plotter] Rendering chunk {idx+1}/{len(sorted_chunks)}")
+                prev_last_point, prev_chunk_end = self._plot_single_chunk(ax, chunk, idx, prev_last_point, prev_chunk_end)
+            
+            self._print_analysis_details(sorted_chunks)
+        else:
+            cpr_logger.info("[Graph Plotter] No chunk data available for plotting")
+            # Set reasonable default axis if only plotting errors
+            ax.set_ylim(0, 100)  # Example default Y-axis range for position
+
+        # Always plot error regions if they exist
+        computed_error_regions = [(er['start_frame']/self.fps, er['end_frame']/self.fps) 
+                                for er in self.posture_warnings_regions]
+        self._plot_error_regions(ax, computed_error_regions)
+
+        # Configure remaining elements regardless of chunks
+        handles, labels = ax.get_legend_handles_labels()
+        unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+        if unique:  # Only add legend if there's content
+            ax.legend(*zip(*unique), loc='upper right')
+
+        plt.xlabel("Time (seconds)")
+        plt.ylabel("Vertical Position (px)")
+        plt.title("Complete CPR Analysis with Metrics")
+        plt.grid(True)
+        plt.tight_layout()
+        cpr_logger.info(f"\n[Graph Plotter] Finalizing plot layout")
+        plt.show()
+        cpr_logger.info("[Graph Plotter] Plot display complete")
