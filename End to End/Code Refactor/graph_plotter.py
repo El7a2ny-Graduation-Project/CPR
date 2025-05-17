@@ -145,8 +145,8 @@ class GraphPlotter:
             
             # Annotate error text
             region_data = self.posture_warnings_regions[idx]
-            if region_data['errors']:
-                error_text = "Errors:\n" + "\n".join(region_data['errors'])
+            if region_data['posture_warnings']:
+                error_text = "Errors:\n" + "\n".join(region_data['posture_warnings'])
                 mid_time = (start_sec + end_sec) / 2
                 ax.text(mid_time, np.mean(ax.get_ylim()), error_text,
                         ha='center', va='center', fontsize=9, color='red', alpha=0.8,
@@ -177,10 +177,11 @@ class GraphPlotter:
             display_idx += 1
 
         cpr_logger.info(f"\n\n=== Error Region Analysis ===")
+        
         for i, region in enumerate(self.posture_warnings_regions):  # Updated to match actual attribute name
             start_frame = region['start_frame']
             end_frame = region['end_frame']
-            errors = region['errors']
+            errors = region['posture_warnings']
             
             # Convert to seconds
             start_sec = start_frame / fps

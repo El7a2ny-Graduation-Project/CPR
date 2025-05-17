@@ -28,8 +28,6 @@ class PostureAnalyzer:
 
         self.posture_errors_for_all_error_region = []
 
-        self.posture_warnings_regions = []
-
         self.warnings = []
 
     def _calculate_angle(self, a, b, c):
@@ -211,16 +209,3 @@ class PostureAnalyzer:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2,
                     cv2.LINE_AA)
     
-    def assign_posture_warnings_region_data(self, region_start_frame, region_end_frame, errors):
-        """Capture error region data for later analysis
-        
-        Args:
-            region_start_frame (int): Starting frame index of error region
-            region_end_frame (int): Ending frame index of error region  
-            errors (set): Posture errors detected in this region
-        """
-        self.posture_warnings_regions.append({
-            'start_frame': region_start_frame,
-            'end_frame': region_end_frame,
-            'errors': errors.copy()
-        })
