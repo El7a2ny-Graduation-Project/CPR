@@ -5,7 +5,7 @@ All notes for GP2 can be found [here](https://thrilling-replace-8f2.notion.site/
 
 ## TODO List for Real-Time CPR
 - [ ] Handle the following cases:
-  - [ ] No correct postures.
+  - [x] No correct postures.
   - [ ] The reporting of very short chunks.
   - [ ] The patient's head being on the left side.
 - [ ] Test the following:
@@ -17,3 +17,11 @@ All notes for GP2 can be found [here](https://thrilling-replace-8f2.notion.site/
 
 ## Fatema's Notes to Self
 - Formated warnings some times contain posture and metric warnings (check 2.mp4)
+- This is how the x and y coordinates change in the frame
+```` plain
+(0,0) → X increases → (width,0)
+  ↓
+Y increases
+  ↓
+(0,height)        (width,height)
+````

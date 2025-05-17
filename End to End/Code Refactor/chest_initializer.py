@@ -26,10 +26,20 @@ class ChestInitializer:
             shoulder_center = np.array([(left_shoulder[0] + right_shoulder[0]) / 2,
                                         (left_shoulder[1] + right_shoulder[1]) / 2])
             
-            # Calculate chest center by applying directional adjustment separately for x and y
-            chest_center_from_shoulder_x = shoulder_center[0] - 0.3 * bbox_delta_y
-            chest_center_from_shoulder_y = shoulder_center[1] - 0.1 * bbox_delta_y
-            chest_center_from_shoulder = np.array([chest_center_from_shoulder_x, chest_center_from_shoulder_y])
+            #& Handing different patient positions
+            # If the x-coordinate shoulder center is closer to that of the Bottom-Right bbox corner (2)
+            # then the orientation is "right"
+            # If the x-coordinate shoulder center is closer to that of the Top-Left bbox corner (1)
+            # then the orientation is "left"
+
+            if abs(shoulder_center[0] - bbox_x2) < abs(shoulder_center[0] - bbox_x1): # Orientation is "right"
+                chest_center_from_shoulder_x = shoulder_center[0] - 0.3 * bbox_delta_y
+                chest_center_from_shoulder_y = shoulder_center[1] - 0.1 * bbox_delta_y
+                chest_center_from_shoulder = np.array([chest_center_from_shoulder_x, chest_center_from_shoulder_y])
+            else: # Orientation is "left"
+                chest_center_from_shoulder_x = shoulder_center[0] + 1.0 * bbox_delta_y
+                chest_center_from_shoulder_y = shoulder_center[1] - 0.1 * bbox_delta_y
+                chest_center_from_shoulder = np.array([chest_center_from_shoulder_x, chest_center_from_shoulder_y])
 
             # Chest dimensions (85% of shoulder width, 40% height)
             chest_dx = bbox_delta_y * 0.8
