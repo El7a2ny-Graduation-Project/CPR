@@ -26,7 +26,7 @@ class PostureAnalyzer:
                          math.atan2(a[1]-b[1], a[0]-b[0]))
             return ang + 360 if ang < 0 else ang
         except Exception as e:
-            cpr_logger.info(f"Angle calculation error: {e}")
+            cpr_logger.error(f"Angle calculation error: {e}")
             return 0
     
     def _check_bended_right_arm(self, keypoints):
@@ -49,7 +49,7 @@ class PostureAnalyzer:
             return warnings
                 
         except Exception as e:
-            cpr_logger.info(f"Right arm check error: {e}")
+            cpr_logger.error(f"Right arm check error: {e}")
         
         return warnings
     
@@ -73,7 +73,7 @@ class PostureAnalyzer:
             return warnings
                 
         except Exception as e:
-            cpr_logger.info(f"Left arm check error: {e}")
+            cpr_logger.error(f"Left arm check error: {e}")
         
         return warnings
 
@@ -95,7 +95,7 @@ class PostureAnalyzer:
                 warnings.append("One-handed CPR detected!")
                 
         except Exception as e:
-            cpr_logger.info(f"One-handed CPR check error: {e}")
+            cpr_logger.error(f"One-handed CPR check error: {e}")
         
         return warnings
 
@@ -116,7 +116,7 @@ class PostureAnalyzer:
                 warnings.append("Hands not on chest!")
                 
         except Exception as e:
-            cpr_logger.info(f"Hands on chest check error: {e}")
+            cpr_logger.error(f"Hands on chest check error: {e}")
         
         return warnings
 

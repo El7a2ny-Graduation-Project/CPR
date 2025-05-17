@@ -20,7 +20,7 @@ class PoseEstimator:
                 return None
             return results[0]
         except Exception as e:
-            cpr_logger.info(f"Pose detection error: {e}")
+            cpr_logger.error(f"Pose detection error: {e}")
             return None
 
     def get_keypoints(self, results, person_idx=0):
@@ -30,7 +30,7 @@ class PoseEstimator:
                 return None
             return results.keypoints.xy[person_idx].cpu().numpy()
         except Exception as e:
-            cpr_logger.info(f"Keypoint extraction error: {e}")
+            cpr_logger.error(f"Keypoint extraction error: {e}")
             return None
 
     def draw_keypoints(self, frame, results):
@@ -38,5 +38,5 @@ class PoseEstimator:
         try:
             return results.plot()
         except Exception as e:
-            cpr_logger.info(f"Keypoint drawing error: {e}")
+            cpr_logger.error(f"Keypoint drawing error: {e}")
             return frame

@@ -1,5 +1,6 @@
 import socket
 import json
+
 from logging_config import cpr_logger
 
 HOST = 'localhost'  # The server's hostname or IP address
@@ -7,7 +8,8 @@ PORT = 5000        # The port used by the server
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
-    cpr_logger.info(f"Connected to {HOST}:{PORT}")
+    #! Set as an error for cleaner logging purposes
+    cpr_logger.error(f"Connected to {HOST}:{PORT}")
     
     try:
         while True:
@@ -20,11 +22,11 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 if line.strip():
                     try:
                         warnings = json.loads(line)
-                        cpr_logger.info("\nReceived warnings:")
-                        cpr_logger.info(f"Status: {warnings['status']}")
-                        cpr_logger.info(f"Posture Warnings: {warnings['posture_warnings']}")
-                        cpr_logger.info(f"Rate/Depth Warnings: {warnings['rate_and_depth_warnings']}")
+                        cpr_logger.error("\nReceived warnings:")
+                        cpr_logger.error(f"Status: {warnings['status']}")
+                        cpr_logger.error(f"Posture Warnings: {warnings['posture_warnings']}")
+                        cpr_logger.error(f"Rate/Depth Warnings: {warnings['rate_and_depth_warnings']}")
                     except json.JSONDecodeError:
-                        cpr_logger.info("Received invalid JSON")
+                        cpr_logger.error("Received invalid JSON")
     except KeyboardInterrupt:
-        cpr_logger.info("Disconnecting...")
+        cpr_logger.error("Disconnecting...")

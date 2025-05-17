@@ -22,7 +22,7 @@ class ShouldersAnalyzer:
             
             return distance
         except Exception as e:
-            cpr_logger.info(f"Shoulder distance error: {e}")
+            cpr_logger.error(f"Shoulder distance error: {e}")
             return
     
     def reset_shoulder_distances(self):

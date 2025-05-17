@@ -28,7 +28,7 @@ class RoleClassifier:
             return 1 if height > width else 0  # 1 for vertical, 0 for horizontal
             
         except (TypeError, ValueError) as e:
-            cpr_logger.info(f"Verticality score calculation error: {e}")
+            cpr_logger.error(f"Verticality score calculation error: {e}")
             return -1
         
     def _calculate_bounding_box_center(self, bounding_box):
@@ -112,7 +112,7 @@ class RoleClassifier:
                 })
             
             except Exception as e:
-                cpr_logger.info(f"Error processing detection {i}: {e}")
+                cpr_logger.error(f"Error processing detection {i}: {e}")
                 continue
 
         # Step 2: Identify the patient (horizontal posture)
@@ -160,7 +160,7 @@ class RoleClassifier:
                     keypoints = self.rescuer_processed_results["keypoints"]
                     annotator.kpts(keypoints, shape=frame.shape[:2])
             except Exception as e:
-                cpr_logger.info(f"Error drawing rescuer: {str(e)}")
+                cpr_logger.error(f"Error drawing rescuer: {str(e)}")
 
         # Draw patient (B) with red box and keypoints
         if self.patient_processed_results:
@@ -172,7 +172,7 @@ class RoleClassifier:
                     keypoints = self.patient_processed_results["keypoints"]
                     annotator.kpts(keypoints, shape=frame.shape[:2])
             except Exception as e:
-                cpr_logger.info(f"Error drawing patient: {str(e)}")
+                cpr_logger.error(f"Error drawing patient: {str(e)}")
 
         return annotator.result()
     

@@ -71,7 +71,7 @@ class ThreadedCamera:
             try:
                 self.q.put(frame, timeout=0.1)
             except queue.Full:
-                cpr_logger.info("Frame dropped")
+                cpr_logger.error("Frame dropped")
                 self.number_of_dropped_frames += 1
 
     def read(self):

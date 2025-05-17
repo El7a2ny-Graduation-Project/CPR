@@ -87,7 +87,7 @@ class MetricsCalculator:
                 sys.exit(1)
 
         except Exception as e:
-            cpr_logger.info(f"\nCRITICAL VALIDATION ERROR: {str(e)}")
+            cpr_logger.error(f"\nCRITICAL VALIDATION ERROR: {str(e)}")
             sys.exit(1)
 
 #^ ################# Preprocessing #######################
@@ -113,7 +113,7 @@ class MetricsCalculator:
                 )
                 return y_smooth
             except Exception as e:
-                cpr_logger.info(f"Smoothing error: {e}")
+                cpr_logger.error(f"Smoothing error: {e}")
                 y_smooth = midpoints[:, 1]  # Fallback to original
                 return y_smooth
         else:
@@ -213,7 +213,7 @@ class MetricsCalculator:
 
             return len(self.peaks) > 0
         except Exception as e:
-            cpr_logger.info(f"Peak detection error: {e}")
+            cpr_logger.error(f"Peak detection error: {e}")
             return False
 
     def calculate_cm_px_ratio(self, shoulder_distances):
@@ -274,7 +274,7 @@ class MetricsCalculator:
             self.depth = depth
             self.rate = rate
         except Exception as e:
-            cpr_logger.info(f"Error calculating rate and depth: {e}")
+            cpr_logger.error(f"Error calculating rate and depth: {e}")
     
     def assign_chunk_data(self, chunk_start_frame_index, chunk_end_frame_index):
         """

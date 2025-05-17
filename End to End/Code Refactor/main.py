@@ -345,7 +345,6 @@ class CPRAnalyzer:
                         self.waiting_to_start_new_chunk = False
                         cpr_logger.info(f"[RUN ANALYSIS] Not waiting to start a new chunk anymore")
 
-
                 #& Compose frame
                 # This function is responsible for drawing the the chest region and the midpoint.
                 # The frame would not be displayed yet, just composed.
@@ -373,7 +372,7 @@ class CPRAnalyzer:
                     try:
                         self.video_writer.write(frame)
                     except Exception as e:
-                        cpr_logger.info(f"[WRITE ERROR] {str(e)}")
+                        cpr_logger.error(f"[WRITE ERROR] {str(e)}")
                         self._writer_initialized = False
                 
                 #^ Formated Warnings
@@ -393,7 +392,7 @@ class CPRAnalyzer:
             cpr_logger.info(f"[TIMING] Main loop elapsed time: {elapsed_time:.2f}s")
 
         except Exception as e:
-            cpr_logger.info(f"[ERROR] An error occurred during main execution loop: {str(e)}")
+            cpr_logger.error(f"[ERROR] An error occurred during main execution loop: {str(e)}")
 
         finally:
             report_and_plot_start_time = time.time()
@@ -597,14 +596,14 @@ class CPRAnalyzer:
                 return
             
         except Exception as e:
-            cpr_logger.info(f"[ERROR] Metric calculation failed: {str(e)}")
+            cpr_logger.error(f"[ERROR] Metric calculation failed: {str(e)}")
 
     def _calculate_rate_and_depth_for_all_chunks(self):
         try:
             self.metrics_calculator.calculate_rate_and_depth_for_all_chunk()
             cpr_logger.info(f"[METRICS] Weighted averages calculated")
         except Exception as e:
-            cpr_logger.info(f"[ERROR] Failed to calculate weighted averages: {str(e)}")
+            cpr_logger.error(f"[ERROR] Failed to calculate weighted averages: {str(e)}")
             
     def _plot_full_motion_curve_for_all_chunks(self):
         try:
@@ -618,7 +617,7 @@ class CPRAnalyzer:
                                                   self.fps)
             cpr_logger.info("[PLOT] Full motion curve plotted")
         except Exception as e:
-            cpr_logger.info(f"[ERROR] Failed to plot full motion curve: {str(e)}")
+            cpr_logger.error(f"[ERROR] Failed to plot full motion curve: {str(e)}")
   
     def _get_rate_and_depth_warnings(self):
         rate_and_depth_warnings = self.metrics_calculator.get_rate_and_depth_warnings()

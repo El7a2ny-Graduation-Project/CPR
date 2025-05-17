@@ -32,11 +32,12 @@ class AnalysisSocketServer:
                 self.connection_event.set()  # Signal that connection was made
                 Thread(target=self._handle_client, args=(self.conn,), daemon=True).start()
             except Exception as e:
-                cpr_logger.info(f"[SOCKET] Connection error: {str(e)}")
+                cpr_logger.error(f"[SOCKET] Connection error: {str(e)}")
 
     def wait_for_connection(self, timeout=None):
         """Block until a client connects"""
-        cpr_logger.info("[SOCKET] Waiting for client connection...")
+        #! Set as an error for cleaner logging purposes
+        cpr_logger.error("[SOCKET] Waiting for client connection...")
         self.connection_event.clear()  # Reset the event
         return self.connection_event.wait(timeout)
 
@@ -50,10 +51,10 @@ class AnalysisSocketServer:
             except queue.Empty:
                 continue  # Timeout allows checking self.running periodically
             except (BrokenPipeError, ConnectionResetError):
-                cpr_logger.info("[SOCKET] Client disconnected")
+                cpr_logger.error("[SOCKET] Client disconnected")
                 break
             except Exception as e:
-                cpr_logger.info(f"[SOCKET] Error: {str(e)}")
+                cpr_logger.error(f"[SOCKET] Error: {str(e)}")
                 break
         conn.close()
 

@@ -35,7 +35,7 @@ class WristsMidpointAnalyzer:
             return midpoint
             
         except Exception as e:
-            cpr_logger.info(f"Midpoint tracking error: {e}")
+            cpr_logger.error(f"Midpoint tracking error: {e}")
             return None
 
     def draw_midpoint(self, frame):
@@ -55,7 +55,7 @@ class WristsMidpointAnalyzer:
 
             return frame
         except Exception as e:
-            cpr_logger.info(f"Midpoint drawing error: {e}")
+            cpr_logger.error(f"Midpoint drawing error: {e}")
             return frame
     
     def reset_midpoint_history(self):
