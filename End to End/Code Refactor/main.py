@@ -80,11 +80,13 @@ class CPRAnalyzer:
         self.MIN_ERROR_DURATION = 1.0    # Require sustained errors for 1 second
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
         self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
+        self.KEEP_RATE_AND_DEPTH_WARNINGS_INTERVAL = 3.0
 
         # Derived frame counts 
         self.sampling_interval_frames = int(round(self.fps * self.SAMPLING_INTERVAL))
         self.error_threshold_frames = int(self.MIN_ERROR_DURATION / self.SAMPLING_INTERVAL)
         self.reporting_interval_frames = int(self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL)
+        self.return_rate_and_depth_warnings_interval_frames = int(self.KEEP_RATE_AND_DEPTH_WARNINGS_INTERVAL / self.SAMPLING_INTERVAL)
 
         # For cleaner feedback, the reporting interval must be an exact multiple of the sampling interval.
         ratio = self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL
@@ -128,6 +130,12 @@ class CPRAnalyzer:
 
         self.posture_warnings = []
         self.rate_and_depth_warnings = []
+
+        #& For Formated Warnings
+        self.cached_posture_warnings = []
+        self.cached_rate_and_depth_warnings = []
+        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
+        cpr_logger.info("[INIT] Formatted warnings initialized")
 
     def _initialize_video_writer(self, frame):
         """Initialize writer with safe fallback options"""
@@ -189,13 +197,9 @@ class CPRAnalyzer:
 				#& Check if you want to skip the frame
                 if self.frame_counter % self.sampling_interval_frames != 0:  
                     #^ Formated Warnings
-                
-                    #!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                    #! We need to cache the formated warnings for processed frames
-
                     # Return the cashed warnings
                     formatted_warnings = self._format_warnings()
-                    #! cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
+                    cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
                     
                     self.socket_server.warning_queue.put(formatted_warnings)
                     cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
@@ -212,6 +216,7 @@ class CPRAnalyzer:
                 # If there were no (sustained) posture warnings, we attempt to detect the midpoint which might either succeed or fail.
                 # This is why we need two variables to indicated what happened inside the process_frame function.
                 posture_warnings, has_appended_midpoint = self._process_frame(frame)
+                self.cached_posture_warnings = posture_warnings
                 cpr_logger.info(f"[RUN ANALYSIS] Processed frame")
 
                 #& Posture Warnings Region Setting Flags
@@ -243,6 +248,8 @@ class CPRAnalyzer:
                         cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
 
                         rate_and_depth_warnings = self._get_rate_and_depth_warnings()
+                        self.cached_rate_and_depth_warnings = rate_and_depth_warnings
+                        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
                         cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
 
                         self.rate_and_depth_warnings.append({
@@ -309,6 +316,8 @@ class CPRAnalyzer:
                         cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
 
                         rate_and_depth_warnings = self._get_rate_and_depth_warnings()
+                        self.cached_rate_and_depth_warnings = rate_and_depth_warnings
+                        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
                         cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
 
                         self.rate_and_depth_warnings.append({
@@ -376,8 +385,8 @@ class CPRAnalyzer:
                         self._writer_initialized = False
                 
                 #^ Formated Warnings
-                formatted_warnings = self._format_warnings(posture_warnings)
-                #! cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
+                formatted_warnings = self._format_warnings()
+                cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
 
                 self.socket_server.warning_queue.put(formatted_warnings)
                 cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
@@ -422,16 +431,32 @@ class CPRAnalyzer:
             report_and_plot_elapsed_time = report_and_plot_end_time - report_and_plot_start_time
             cpr_logger.info(f"[TIMING] Report and plot elapsed time: {report_and_plot_elapsed_time:.2f}s")
 
-    def _format_warnings(self, posture_warnings = []):
+    def _format_warnings(self):
         """Combine warnings into a simple structured response"""
+
+        if self.cached_posture_warnings:
+            return {
+                "status": "warning",
+                "posture_warnings": self.cached_posture_warnings,
+                "rate_and_depth_warnings": [],
+            }
+        
+        if (self.cached_rate_and_depth_warnings) and (self.return_rate_and_depth_warnings_interval_frames_counter > 0):
+            self.return_rate_and_depth_warnings_interval_frames_counter -= 1
+
+            return {
+                "status": "warning",
+                "posture_warnings": [],
+                "rate_and_depth_warnings": self.cached_rate_and_depth_warnings,
+            }
+        
         return {
-            "status": "warning" if any([posture_warnings, self.rate_and_depth_warnings_from_the_last_report]) else "ok",
-            "posture_warnings": list(posture_warnings),
-            "rate_and_depth_warnings": self.rate_and_depth_warnings_from_the_last_report,
+            "status": "ok",
+            "posture_warnings": [],
+            "rate_and_depth_warnings": [],
         }
 
     def _handle_frame_rotation(self, frame):
-        #! Till now, the code has only been testes on portrait videos.
         if frame.shape[1] > frame.shape[0]:  # Width > Height
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         return frame
@@ -630,7 +655,6 @@ if __name__ == "__main__":
     
     # source = "https://192.168.1.9:8080/video"  # IP camera URL
     source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
-    # source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_3.mp4"
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     

@@ -36,7 +36,7 @@ class AnalysisSocketServer:
 
     def wait_for_connection(self, timeout=None):
         """Block until a client connects"""
-        #! Set as an error for cleaner logging purposes
+        #^ Set as an error for cleaner logging purposes
         cpr_logger.error("[SOCKET] Waiting for client connection...")
         self.connection_event.clear()  # Reset the event
         return self.connection_event.wait(timeout)

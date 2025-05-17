@@ -36,6 +36,7 @@ class ThreadedCamera:
         self.running.set()  # Initial state = running
         cpr_logger.info(f"[VIDEO CAPTURE] Camera running: {self.running.is_set()}")
 
+        self.number_of_total_frames = 0
         self.number_of_dropped_frames = 0
 
         self.thread = None
@@ -69,16 +70,17 @@ class ThreadedCamera:
                 break
                 
             try:
+                self.number_of_total_frames += 1
                 self.q.put(frame, timeout=0.1)
             except queue.Full:
-                cpr_logger.error("Frame dropped")
+                cpr_logger.info("Frame dropped")
                 self.number_of_dropped_frames += 1
 
     def read(self):
         return self.q.get()
 
     def release(self):
-        cpr_logger.info(f"Number of dropped frames: {self.number_of_dropped_frames}")
+        cpr_logger.error(f"[VIDEO CAPTURE] Total frames: {self.number_of_total_frames}, Dropped frames: {self.number_of_dropped_frames}")
         
         self.running.clear()
         

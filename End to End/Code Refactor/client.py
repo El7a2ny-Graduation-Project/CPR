@@ -8,7 +8,7 @@ PORT = 5000        # The port used by the server
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
-    #! Set as an error for cleaner logging purposes
+    #^ Set as an error for cleaner logging purposes
     cpr_logger.error(f"Connected to {HOST}:{PORT}")
     
     try:
