@@ -82,12 +82,14 @@ class CPRAnalyzer:
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
         self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
         self.KEEP_RATE_AND_DEPTH_WARNINGS_INTERVAL = 3.0
+        self.MIN_CHUNK_LENGTH_TO_REPORT = 3.0
 
         # Derived frame counts 
         self.sampling_interval_frames = int(round(self.fps * self.SAMPLING_INTERVAL))
         self.error_threshold_frames = int(self.MIN_ERROR_DURATION / self.SAMPLING_INTERVAL)
         self.reporting_interval_frames = int(self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL)
         self.return_rate_and_depth_warnings_interval_frames = int(self.KEEP_RATE_AND_DEPTH_WARNINGS_INTERVAL / self.SAMPLING_INTERVAL)
+        self.min_chunk_length_to_report_frames = int(self.MIN_CHUNK_LENGTH_TO_REPORT / self.SAMPLING_INTERVAL)
 
         # For cleaner feedback, the reporting interval must be an exact multiple of the sampling interval.
         ratio = self.REPORTING_INTERVAL / self.SAMPLING_INTERVAL
@@ -250,6 +252,11 @@ class CPRAnalyzer:
                         cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
 
                         rate_and_depth_warnings = self._get_rate_and_depth_warnings()
+
+                        # If the chunk is too short, we don't want to report any warnings it might contain.
+                        if (self.chunk_end_frame_index - self.chunk_start_frame_index) < self.min_chunk_length_to_report_frames:
+                            rate_and_depth_warnings = []
+
                         self.cached_rate_and_depth_warnings = rate_and_depth_warnings
                         self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
                         cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
@@ -318,6 +325,11 @@ class CPRAnalyzer:
                         cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
 
                         rate_and_depth_warnings = self._get_rate_and_depth_warnings()
+
+                        # If the chunk is too short, we don't want to report any warnings it might contain.
+                        if (self.chunk_end_frame_index - self.chunk_start_frame_index) < self.min_chunk_length_to_report_frames:
+                            rate_and_depth_warnings = []
+
                         self.cached_rate_and_depth_warnings = rate_and_depth_warnings
                         self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
                         cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
@@ -658,8 +670,8 @@ if __name__ == "__main__":
     cpr_logger.info(f"[MAIN] CPR Analysis Started")
     
     # source = "https://192.168.1.9:8080/video"  # IP camera URL
-    # source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\1.mp4"
-    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_2.mp4"
+    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    # source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_2.mp4"
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     
