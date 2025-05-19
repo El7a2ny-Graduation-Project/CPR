@@ -108,11 +108,13 @@ class CPRAnalyzer:
 
         #& Workaround for minor glitches
         # A frame is accepted as long as this counter does not exceed the error_threshold_frames set above.
+        #! These (and those in the warnings_overlayer) should exactly match the ones appended in the PostureAnalyzer.
         self.possible_warnings = [
             "Right arm bent!",
             "Left arm bent!",
-            "One-handed CPR detected!",
-            "Hands not on chest!"
+            "Left hand not on chest!",
+            "Right hand not on chest!",
+            "Both hands not on chest!",
         ]
         self.consecutive_frames_with_posture_errors_counters = {warning: 0 for warning in self.possible_warnings}
 
@@ -241,6 +243,8 @@ class CPRAnalyzer:
                 #& Chunks and Posture Warnings Regions Management
                 #~ Case 1: posture warnings region after a chunk
                 if is_start_of_posture_warnings_region:
+                    cpr_logger.info(f"[RUN ANALYSIS] Case 1: posture warnings region after a chunk")
+
                     # Start a new posture warnings region
                     self.posture_warnings_region_start_frame_index = self.frame_counter
                     cpr_logger.info(f"[RUN ANALYSIS] Start of posture warnings region detected")
@@ -276,6 +280,8 @@ class CPRAnalyzer:
 
                 #~ Case 2: posture warnings region after a posture warnings region
                 if (self.cached_posture_warnings != posture_warnings) and (is_part_of_a_posture_warnings_region) and (not is_start_of_posture_warnings_region) and (not is_end_of_posture_warnings_region):
+                    cpr_logger.info(f"[RUN ANALYSIS] Case 2: posture warnings region after a posture warnings region")
+
                     # End the previous posture warnings region
                     self.posture_warnings_region_end_frame_index = self.frame_counter - 1
                     cpr_logger.info(f"[RUN ANALYSIS] End of posture warnings region detected")
@@ -293,6 +299,8 @@ class CPRAnalyzer:
                 
                 #~ Case 3: chunk after a posture warnings region
                 if is_end_of_posture_warnings_region:
+                    cpr_logger.info(f"[RUN ANALYSIS] Case 3: chunk after a posture warnings region")
+
                     # Start a new chunk
                     self.waiting_to_start_new_chunk = True
                     cpr_logger.info(f"[RUN ANALYSIS] Waiting to start a new chunk")
@@ -310,7 +318,9 @@ class CPRAnalyzer:
                     cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
                 
                 #~ Case 4: chunk after a chunk
-                if (not is_part_of_a_posture_warnings_region) and (self.frame_counter % self.reporting_interval_frames == 0):     
+                if (not is_part_of_a_posture_warnings_region) and (not is_end_of_posture_warnings_region) and (self.frame_counter % self.reporting_interval_frames == 0):    
+                    cpr_logger.info(f"[RUN ANALYSIS] Case 4: chunk after a chunk")
+
                     # End the previous chunk if it exists
                     if self.chunk_start_frame_index is not None and self.chunk_start_frame_index != self.frame_counter:
                         self.chunk_end_frame_index = self.frame_counter
@@ -348,6 +358,7 @@ class CPRAnalyzer:
                 
                 #~ Follow up on cases 3 and 4
                 if (self.waiting_to_start_new_chunk) and (has_appended_midpoint):
+                    cpr_logger.info(f"[RUN ANALYSIS] Follow up on cases 3 and 4")
 
                     if new_chunk_type == "chunk":
                         self.chunk_start_frame_index = self.frame_counter
@@ -551,8 +562,9 @@ class CPRAnalyzer:
             self.chest_initializer.expected_chest_params = expected_chest_params
 
         #& Posture Analysis
-        # The midpoind of the last frame
-        current_warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"], self.prev_midpoint, self.chest_initializer.expected_chest_params)
+        cpr_logger.info(f"[POSTURE ANALYSIS] Analyzing posture")
+        current_warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"], self.chest_initializer.expected_chest_params)
+        cpr_logger.info(f"[POSTURE ANALYSIS] Posture analysis completed")
 
         # Update individual warning counters
         for warning in self.possible_warnings:
@@ -656,7 +668,7 @@ if __name__ == "__main__":
     cpr_logger.info(f"[MAIN] CPR Analysis Started")
     
     # source = "https://192.168.1.9:8080/video"  # IP camera URL
-    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_4.mp4"
+    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     

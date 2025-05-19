@@ -11,37 +11,41 @@ class WarningsOverlayer:
             # Posture Warnings
             "Right arm bent!": {
                 "color": (52, 110, 235),
-                "position": (50, 150)  # Top position
+                "position": (50, 150)
             },
             "Left arm bent!": {
                 "color": (52, 110, 235),
                 "position": (50, 200)
             },
-            "One-handed CPR detected!": {
-                "color": (27, 150, 70),
+            "Left hand not on chest!": {
+                "color": (161, 127, 18),
                 "position": (50, 250)
             },
-            "Hands not on chest!": {
+            "Right hand not on chest!": {
                 "color": (161, 127, 18),
                 "position": (50, 300)
+            },
+            "Both hands not on chest!": {
+                "color": (161, 127, 18),
+                "position": (50, 350)
             },
             
             # Rate/Depth Warnings
             "Depth too low!": {
                 "color": (125, 52, 235),
-                "position": (50, 350)  # Bottom position
+                "position": (50, 400)
             },
             "Depth too high!": {
                 "color": (125, 52, 235),
-                "position": (50, 350)
+                "position": (50, 450)
             },
             "Rate too slow!": {
                 "color": (235, 52, 214),
-                "position": (50, 350)
+                "position": (50, 500)
             },
             "Rate too fast!": {
                 "color": (235, 52, 214),
-                "position": (50, 350)
+                "position": (50, 550)
             }
         }
     

@@ -77,54 +77,56 @@ class PostureAnalyzer:
         
         return warnings
 
-    def _check_one_handed_cpr(self, keypoints):
-        """Check for one-handed CPR pattern (returns warning)"""
-        warnings = []
-        try:
-            # Calculate wrist distance
-            left_wrist = keypoints[CocoKeypoints.LEFT_WRIST.value]
-            right_wrist = keypoints[CocoKeypoints.RIGHT_WRIST.value]
-            
-            wrist_distance = np.linalg.norm(left_wrist - right_wrist)
-            self.wrist_distances.append(wrist_distance)
-            
-            # Analyze distance with moving average
-            avg_distance = np.mean(self.wrist_distances[-self.history_length_to_average:] if self.wrist_distances else 0)
-            
-            if avg_distance > self.wrist_distance_threshold:
-                warnings.append("One-handed CPR detected!")
-                
-        except Exception as e:
-            cpr_logger.error(f"One-handed CPR check error: {e}")
-        
-        return warnings
+    def _check_hands_on_chest(self, keypoints, chest_params):
+        """Check individual hand positions and return specific warnings"""
 
-    def _check_hands_on_chest(self, wrists_midpoint, chest_params):  # (cx, cy, cw, ch)
-        """Check if hands are on the chest (returns warning)"""
+        # Get the wrist keypoints
+        left_wrist = keypoints[CocoKeypoints.LEFT_WRIST.value]
+        right_wrist = keypoints[CocoKeypoints.RIGHT_WRIST.value]
+
         warnings = []
         try:
-            #! Revisit this condition
-            # Check if hands are on the chest
-            if wrists_midpoint is None or chest_params is None:
-                return ["Hands not on chest!"]
+            if chest_params is None:
+                return ["Both hands not on chest!"]  # Fallback warning
             
-            # Unpack parameters
-            wrist_x, wrist_y = wrists_midpoint
             cx, cy, cw, ch = chest_params
+            left_in = right_in = False
+
+            # Check left hand
+            if left_wrist is not None:
+                left_in = (cx - cw/2 < left_wrist[0] < cx + cw/2) and \
+                          (cy - ch/2 < left_wrist[1] < cy + ch/2)
             
-            if not ((cx - cw/2 < wrist_x < cx + cw/2) and (cy - ch/2 < wrist_y < cy + ch/2)):
-                warnings.append("Hands not on chest!")
-                
+            # Check right hand
+            if right_wrist is not None:
+                right_in = (cx - cw/2 < right_wrist[0] < cx + cw/2) and \
+                            (cy - ch/2 < right_wrist[1] < cy + ch/2)
+
+            # Determine warnings
+            if not left_in and not right_in:
+                warnings.append("Both hands not on chest!")
+            else:
+                if not left_in:
+                    warnings.append("Left hand not on chest!")
+                if not right_in:
+                    warnings.append("Right hand not on chest!")
+
         except Exception as e:
-            cpr_logger.error(f"Hands on chest check error: {e}")
+            cpr_logger.error(f"Hands check error: {e}")
         
         return warnings
 
-    def validate_posture(self, keypoints, wrists_midpoint, chest_params):
+
+    def validate_posture(self, keypoints, chest_params):
         """Run all posture validations (returns aggregated warnings)"""
         warnings = []
-        warnings += self._check_bended_right_arm(keypoints)
-        warnings += self._check_bended_left_arm(keypoints)
-        warnings += self._check_one_handed_cpr(keypoints)
-        warnings += self._check_hands_on_chest(wrists_midpoint, chest_params)
+
+        warnings += self._check_hands_on_chest(keypoints, chest_params)
+
+        if ("Right hand not on chest!" not in warnings) and ("Both hands not on chest!" not in warnings):
+            warnings += self._check_bended_right_arm(keypoints)
+        
+        if ("Left hand not on chest!" not in warnings) and ("Both hands not on chest!" not in warnings):
+            warnings += self._check_bended_left_arm(keypoints)
+       
         return warnings
