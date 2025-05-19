@@ -108,13 +108,15 @@ class CPRAnalyzer:
 
         #& Workaround for minor glitches
         # A frame is accepted as long as this counter does not exceed the error_threshold_frames set above.
-        self.consecutive_frames_with_posture_errors = 0
-        cpr_logger.info("[INIT] Consecutive frames with posture errors initialized")
+        self.possible_warnings = [
+            "Right arm bent!",
+            "Left arm bent!",
+            "One-handed CPR detected!",
+            "Hands not on chest!"
+        ]
+        self.consecutive_frames_with_posture_errors_counters = {warning: 0 for warning in self.possible_warnings}
 
         #& Initialize variables for reporting warnings
-        # This variable is used when plotting the graph at the end after the whole video is processed.
-        self.posture_warnings_for_current_posture_warnings_region = set()
-        cpr_logger.info("[INIT] Posture errors for current posture warnings region initialized")
 
         self.rate_and_depth_warnings_from_the_last_report = []
         cpr_logger.info("[INIT] Rate and depth warnings from the last report initialized")
@@ -197,7 +199,7 @@ class CPRAnalyzer:
 
                 cpr_logger.info(f"\n[FRAME {int(self.frame_counter)}]")
                 
-				#& Check if you want to skip the frame
+                #& Check if you want to skip the frame
                 if self.frame_counter % self.sampling_interval_frames != 0:  
                     #^ Formated Warnings
                     # Return the cashed warnings
@@ -220,7 +222,6 @@ class CPRAnalyzer:
                 # If there were no (sustained) posture warnings, we attempt to detect the midpoint which might either succeed or fail.
                 # This is why we need two variables to indicated what happened inside the process_frame function.
                 posture_warnings, has_appended_midpoint = self._process_frame(frame)
-                self.cached_posture_warnings = posture_warnings
                 cpr_logger.info(f"[RUN ANALYSIS] Processed frame")
 
                 #& Posture Warnings Region Setting Flags
@@ -234,6 +235,7 @@ class CPRAnalyzer:
                 
                 # Update the cached value for the next iteration
                 self.prev_is_part_of_a_posture_warnings_region = is_part_of_a_posture_warnings_region
+
                 cpr_logger.info(f"[RUN ANALYSIS] Posture warnings region flags updated")
 
                 #& Chunks and Posture Warnings Regions Management
@@ -273,7 +275,7 @@ class CPRAnalyzer:
                         cpr_logger.info(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history for the chunk")
 
                 #~ Case 2: posture warnings region after a posture warnings region
-                if (not is_start_of_posture_warnings_region) and (is_part_of_a_posture_warnings_region) and (self.frame_counter % self.reporting_interval_frames == 0):
+                if (self.cached_posture_warnings != posture_warnings) and (is_part_of_a_posture_warnings_region) and (not is_start_of_posture_warnings_region) and (not is_end_of_posture_warnings_region):
                     # End the previous posture warnings region
                     self.posture_warnings_region_end_frame_index = self.frame_counter - 1
                     cpr_logger.info(f"[RUN ANALYSIS] End of posture warnings region detected")
@@ -281,13 +283,9 @@ class CPRAnalyzer:
                     self.posture_warnings.append({
                         'start_frame': self.posture_warnings_region_start_frame_index,
                         'end_frame': self.posture_warnings_region_end_frame_index,
-                        'posture_warnings': self.posture_warnings_for_current_posture_warnings_region.copy(),
+                        'posture_warnings': self.cached_posture_warnings.copy(),
                     })
-                    
                     cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
-
-                    self.posture_warnings_for_current_posture_warnings_region.clear()
-                    cpr_logger.info(f"[RUN ANALYSIS] Reset posture errors for current posture warnings region")
 
                     # Start a new posture warnings region
                     self.posture_warnings_region_start_frame_index = self.frame_counter
@@ -307,12 +305,9 @@ class CPRAnalyzer:
                     self.posture_warnings.append({
                         'start_frame': self.posture_warnings_region_start_frame_index,
                         'end_frame': self.posture_warnings_region_end_frame_index,
-                        'posture_warnings': self.posture_warnings_for_current_posture_warnings_region.copy(),
+                        'posture_warnings': self.cached_posture_warnings.copy(),
                     })
                     cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
-
-                    self.posture_warnings_for_current_posture_warnings_region.clear()
-                    cpr_logger.info(f"[RUN ANALYSIS] Reset posture errors for current posture warnings region")
                 
                 #~ Case 4: chunk after a chunk
                 if (not is_part_of_a_posture_warnings_region) and (self.frame_counter % self.reporting_interval_frames == 0):     
@@ -398,6 +393,10 @@ class CPRAnalyzer:
                         cpr_logger.error(f"[WRITE ERROR] {str(e)}")
                         self._writer_initialized = False
                 
+                #& Update the cached posture warnings
+                # Don't update it before handling the four cases because the old cached warnings might be needed.
+                self.cached_posture_warnings = posture_warnings
+                
                 #^ Formated Warnings
                 formatted_warnings = self._format_warnings()
                 cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
@@ -482,8 +481,6 @@ class CPRAnalyzer:
         warnings = []
 
         #* Chunk Completion Check
-        accept_frame = True
-
         has_appended_midpoint = False
         
         #& Pose Estimation
@@ -555,19 +552,20 @@ class CPRAnalyzer:
 
         #& Posture Analysis
         # The midpoind of the last frame
-        warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"], self.prev_midpoint, self.chest_initializer.expected_chest_params)
+        current_warnings = self.posture_analyzer.validate_posture(rescuer_processed_results["keypoints"], self.prev_midpoint, self.chest_initializer.expected_chest_params)
 
-        if warnings:
-            cpr_logger.info(f"[POSTURE ANALYSIS] Posture issues: {', '.join(warnings)}")
-            self.consecutive_frames_with_posture_errors += 1
-        else:
-            cpr_logger.info("[POSTURE ANALYSIS] No posture issues detected")
-            self.consecutive_frames_with_posture_errors = 0
-        
-        accept_frame = self.consecutive_frames_with_posture_errors < self.error_threshold_frames
+        # Update individual warning counters
+        for warning in self.possible_warnings:
+            if warning in current_warnings:
+                self.consecutive_frames_with_posture_errors_counters[warning] += 1
+            else:
+                self.consecutive_frames_with_posture_errors_counters[warning] = 0
 
-        if accept_frame:
-            warnings = []  # Reset warnings if the frame is accepted
+        # Filter warnings that meet/exceed threshold
+        warnings = [
+            warning for warning in self.possible_warnings
+            if self.consecutive_frames_with_posture_errors_counters[warning] >= self.error_threshold_frames
+        ]
 
         #^ Set Params in Posture Analyzer (to draw later)
         self.posture_analyzer.warnings = warnings  
@@ -587,7 +585,7 @@ class CPRAnalyzer:
             cpr_logger.info("[WRIST MIDPOINT DETECTION] Insufficient data for processing")
             return warnings, has_appended_midpoint
             
-        if accept_frame:
+        if len(warnings) == 0:
             #^ Set Params in Role Classifier (to draw later)
             has_appended_midpoint = True
             self.wrists_midpoint_analyzer.midpoint = midpoint
@@ -600,18 +598,6 @@ class CPRAnalyzer:
                 self.shoulders_analyzer.shoulder_distance = shoulder_distance
                 self.shoulders_analyzer.shoulder_distance_history.append(shoulder_distance)
             cpr_logger.info(f"[SHOULDER DISTANCE] Updated shoulder distance analyzer with new results")
-        else:
-            #* Chunk Completion Check
-            num_warnings_before = len(self.posture_warnings_for_current_posture_warnings_region)
-
-            for warning in warnings:
-                
-                self.posture_warnings_for_current_posture_warnings_region.add(warning)
-                
-                num_warnings_after = len(self.posture_warnings_for_current_posture_warnings_region)
-                
-                if num_warnings_after > num_warnings_before:
-                    cpr_logger.info(f"[POSTURE ANALYSIS] Added warning to current posture warnings region: {warning}") 
 
         return warnings, has_appended_midpoint
     
@@ -670,8 +656,7 @@ if __name__ == "__main__":
     cpr_logger.info(f"[MAIN] CPR Analysis Started")
     
     # source = "https://192.168.1.9:8080/video"  # IP camera URL
-    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
-    # source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_2.mp4"
+    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_4.mp4"
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     
