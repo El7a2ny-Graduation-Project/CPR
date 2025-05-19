@@ -167,6 +167,52 @@ class CPRAnalyzer:
         cpr_logger.info("[ERROR] Failed to initialize any video writer!")
         self._writer_initialized = False
         
+    def _handle_chunk_end(self):
+        """Helper to handle chunk termination logic"""
+        self._calculate_rate_and_depth_for_chunk()
+        cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
+
+        rate_and_depth_warnings = self._get_rate_and_depth_warnings()
+
+        # If the chunk is too short, we don't want to report any warnings it might contain.
+        if (self.chunk_end_frame_index - self.chunk_start_frame_index) < self.min_chunk_length_to_report_frames:
+            rate_and_depth_warnings = []
+
+        self.cached_rate_and_depth_warnings = rate_and_depth_warnings
+        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
+        cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
+
+        self.rate_and_depth_warnings.append({
+            'start_frame': self.chunk_start_frame_index,
+            'end_frame': self.chunk_end_frame_index,
+            'rate_and_depth_warnings': rate_and_depth_warnings,
+        })
+        cpr_logger.info(f"[RUN ANALYSIS] Assigned rate and depth warnings region data")
+
+        self.shoulders_analyzer.reset_shoulder_distances()
+        self.wrists_midpoint_analyzer.reset_midpoint_history()
+        cpr_logger.info(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history for the chunk")
+    
+    def _handle_posture_warnings_region_end(self):
+        """Helper to handle posture warnings region termination"""
+        self.posture_warnings.append({
+            'start_frame': self.posture_warnings_region_start_frame_index,
+            'end_frame': self.posture_warnings_region_end_frame_index,
+            'posture_warnings': self.cached_posture_warnings.copy(),
+        })
+        cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
+
+    def _start_new_chunk(self, chunk_type="chunk"):
+        """Helper to initialize new chunk"""
+        self.chunk_start_frame_index = self.frame_counter
+        self.waiting_to_start_new_chunk = False
+        cpr_logger.info(f"[CHUNK] New {chunk_type} started at {self.frame_counter}")
+    
+    def _start_new_posture_warnings_region(self):
+        """Helper to initialize new posture warnings region"""
+        self.posture_warnings_region_start_frame_index = self.frame_counter
+        cpr_logger.info(f"[POSTURE WARNINGS] New region started at {self.frame_counter}")
+    
     def run_analysis(self):
         try:
             cpr_logger.info("[RUN ANALYSIS] Starting analysis")
@@ -199,41 +245,14 @@ class CPRAnalyzer:
                     if self.prev_is_part_of_a_posture_warnings_region:
                         # End the posture warnings region
                         self.posture_warnings_region_end_frame_index = self.frame_counter
-                        self.posture_warnings.append({
-                            'start_frame': self.posture_warnings_region_start_frame_index,
-                            'end_frame': self.posture_warnings_region_end_frame_index,
-                            'posture_warnings': self.cached_posture_warnings.copy(),
-                        })
-                        cpr_logger.info("[RUN ANALYSIS] Closed open posture warnings region due to stream end")
+                        cpr_logger.info(f"[RUN ANALYSIS] End of posture warnings region detected")
+                        self._handle_posture_warnings_region_end()
                     
                     elif self.chunk_start_frame_index is not None:
                         # End the current chunk
                         self.chunk_end_frame_index = self.frame_counter
-                        
-                        self._calculate_rate_and_depth_for_chunk()
-                        cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
-
-                        rate_and_depth_warnings = self._get_rate_and_depth_warnings()
-
-                        # If the chunk is too short, we don't want to report any warnings it might contain.
-                        if (self.chunk_end_frame_index - self.chunk_start_frame_index) < self.min_chunk_length_to_report_frames:
-                            rate_and_depth_warnings = []
-
-                        self.cached_rate_and_depth_warnings = rate_and_depth_warnings
-                        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
-                        cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
-
-                        self.rate_and_depth_warnings.append({
-                            'start_frame': self.chunk_start_frame_index,
-                            'end_frame': self.chunk_end_frame_index,
-                            'rate_and_depth_warnings': rate_and_depth_warnings,
-                        })
-                        cpr_logger.info(f"[RUN ANALYSIS] Assigned rate and depth warnings region data")
-
-                        self.shoulders_analyzer.reset_shoulder_distances()
-                        self.wrists_midpoint_analyzer.reset_midpoint_history()
-                        cpr_logger.info(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history for the chunk")
-                    
+                        cpr_logger.info(f"[RUN ANALYSIS] End of chunk detected")
+                        self._handle_chunk_end()
                     break
                 
                 #& Increment frame counter
@@ -286,37 +305,13 @@ class CPRAnalyzer:
                     cpr_logger.info(f"[RUN ANALYSIS] Case 1: posture warnings region after a chunk")
 
                     # Start a new posture warnings region
-                    self.posture_warnings_region_start_frame_index = self.frame_counter
-                    cpr_logger.info(f"[RUN ANALYSIS] Start of posture warnings region detected")
+                    self._start_new_posture_warnings_region()
 
                     # End the previous chunk if it exists
                     if self.chunk_start_frame_index is not None:
                         self.chunk_end_frame_index = self.frame_counter - 1
                         cpr_logger.info(f"[RUN ANALYSIS] End of chunk detected")
-
-                        self._calculate_rate_and_depth_for_chunk()
-                        cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
-
-                        rate_and_depth_warnings = self._get_rate_and_depth_warnings()
-
-                        # If the chunk is too short, we don't want to report any warnings it might contain.
-                        if (self.chunk_end_frame_index - self.chunk_start_frame_index) < self.min_chunk_length_to_report_frames:
-                            rate_and_depth_warnings = []
-
-                        self.cached_rate_and_depth_warnings = rate_and_depth_warnings
-                        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
-                        cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
-
-                        self.rate_and_depth_warnings.append({
-                            'start_frame': self.chunk_start_frame_index,
-                            'end_frame': self.chunk_end_frame_index,
-                            'rate_and_depth_warnings': rate_and_depth_warnings,
-                        })
-                        cpr_logger.info(f"[RUN ANALYSIS] Assigned rate and depth warnings region data")
-
-                        self.shoulders_analyzer.reset_shoulder_distances()
-                        self.wrists_midpoint_analyzer.reset_midpoint_history()
-                        cpr_logger.info(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history for the chunk")
+                        self._handle_chunk_end()
 
                 #~ Case 2: posture warnings region after a posture warnings region
                 if (self.cached_posture_warnings != posture_warnings) and (is_part_of_a_posture_warnings_region) and (not is_start_of_posture_warnings_region) and (not is_end_of_posture_warnings_region):
@@ -325,17 +320,10 @@ class CPRAnalyzer:
                     # End the previous posture warnings region
                     self.posture_warnings_region_end_frame_index = self.frame_counter - 1
                     cpr_logger.info(f"[RUN ANALYSIS] End of posture warnings region detected")
-
-                    self.posture_warnings.append({
-                        'start_frame': self.posture_warnings_region_start_frame_index,
-                        'end_frame': self.posture_warnings_region_end_frame_index,
-                        'posture_warnings': self.cached_posture_warnings.copy(),
-                    })
-                    cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
+                    self._handle_posture_warnings_region_end()
 
                     # Start a new posture warnings region
-                    self.posture_warnings_region_start_frame_index = self.frame_counter
-                    cpr_logger.info(f"[RUN ANALYSIS] Start of posture warnings region detected")
+                    self._start_new_posture_warnings_region()
                 
                 #~ Case 3: chunk after a posture warnings region
                 if is_end_of_posture_warnings_region:
@@ -349,13 +337,7 @@ class CPRAnalyzer:
                     # End the previous posture warnings region
                     self.posture_warnings_region_end_frame_index = self.frame_counter - 1
                     cpr_logger.info(f"[RUN ANALYSIS] End of posture warnings region detected")
-
-                    self.posture_warnings.append({
-                        'start_frame': self.posture_warnings_region_start_frame_index,
-                        'end_frame': self.posture_warnings_region_end_frame_index,
-                        'posture_warnings': self.cached_posture_warnings.copy(),
-                    })
-                    cpr_logger.info(f"[RUN ANALYSIS] Assigned posture warnings region data")
+                    self._handle_posture_warnings_region_end()
                 
                 #~ Case 4: chunk after a chunk
                 if (not is_part_of_a_posture_warnings_region) and (not is_end_of_posture_warnings_region) and (self.frame_counter % self.reporting_interval_frames == 0):    
@@ -365,30 +347,7 @@ class CPRAnalyzer:
                     if self.chunk_start_frame_index is not None and self.chunk_start_frame_index != self.frame_counter:
                         self.chunk_end_frame_index = self.frame_counter
                         cpr_logger.info(f"[RUN ANALYSIS] End of chunk detected")
-
-                        self._calculate_rate_and_depth_for_chunk()
-                        cpr_logger.info(f"[RUN ANALYSIS] Calculated rate and depth for the chunk")
-
-                        rate_and_depth_warnings = self._get_rate_and_depth_warnings()
-
-                        # If the chunk is too short, we don't want to report any warnings it might contain.
-                        if (self.chunk_end_frame_index - self.chunk_start_frame_index) < self.min_chunk_length_to_report_frames:
-                            rate_and_depth_warnings = []
-
-                        self.cached_rate_and_depth_warnings = rate_and_depth_warnings
-                        self.return_rate_and_depth_warnings_interval_frames_counter = self.return_rate_and_depth_warnings_interval_frames
-                        cpr_logger.info(f"[RUN ANALYSIS] Retrieved rate and depth warnings for the chunk")
-
-                        self.rate_and_depth_warnings.append({
-                            'start_frame': self.chunk_start_frame_index,
-                            'end_frame': self.chunk_end_frame_index,
-                            'rate_and_depth_warnings': rate_and_depth_warnings,
-                        })
-                        cpr_logger.info(f"[RUN ANALYSIS] Assigned rate and depth warnings region data")
-
-                        self.shoulders_analyzer.reset_shoulder_distances()
-                        self.wrists_midpoint_analyzer.reset_midpoint_history()
-                        cpr_logger.info(f"[RUN ANALYSIS] Reset shoulder distances and midpoint history for the chunk")
+                        self._handle_chunk_end()
 
                     # Start a new chunk
                     self.waiting_to_start_new_chunk = True
@@ -400,19 +359,8 @@ class CPRAnalyzer:
                 if (self.waiting_to_start_new_chunk) and (has_appended_midpoint):
                     cpr_logger.info(f"[RUN ANALYSIS] Follow up on cases 3 and 4")
 
-                    if new_chunk_type == "chunk":
-                        self.chunk_start_frame_index = self.frame_counter
-                        cpr_logger.info(f"[RUN ANALYSIS] Start of chunk detected")
-
-                        self.waiting_to_start_new_chunk = False
-                        cpr_logger.info(f"[RUN ANALYSIS] Not waiting to start a new chunk anymore")
-
-                    if new_chunk_type == "mini chunk" and self.frame_counter != self.chunk_end_frame_index:
-                        self.chunk_start_frame_index = self.frame_counter
-                        cpr_logger.info(f"[RUN ANALYSIS] Start of mini chunk detected")
-
-                        self.waiting_to_start_new_chunk = False
-                        cpr_logger.info(f"[RUN ANALYSIS] Not waiting to start a new chunk anymore")
+                    if (new_chunk_type == "chunk") or (new_chunk_type == "mini chunk" and self.frame_counter != self.chunk_end_frame_index):
+                        self._start_new_chunk()
 
                 #& Compose frame
                 # This function is responsible for drawing the the chest region and the midpoint.
@@ -708,7 +656,7 @@ if __name__ == "__main__":
     cpr_logger.info(f"[MAIN] CPR Analysis Started")
     
     # source = "https://192.168.1.9:8080/video"  # IP camera URL
-    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Tracking\video_1.mp4"
+    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
     requested_fps = 30
     output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
     
