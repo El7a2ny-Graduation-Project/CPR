@@ -463,3 +463,7 @@ class MetricsCalculator:
 # For example, a chunk with < 2 peaks will not be able to calculate the rate.
 # So we will set it to zero and display the midpoints and detected peaks.
 # If there are no peaks, we will set the rate to zero and display the midpoints.
+
+# Problems with chunks could be:
+# - Less than 3 seconds.
+# - Not enough peaks to calculate depth and rate
