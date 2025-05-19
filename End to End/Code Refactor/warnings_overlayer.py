@@ -49,12 +49,12 @@ class WarningsOverlayer:
             }
         }
     
-    def add_warnings_to_processed_video(self, output_video_path, sampling_interval_frames, rate_and_depth_warnings, posture_warnings):
+    def add_warnings_to_processed_video(self, video_output_path, sampling_interval_frames, rate_and_depth_warnings, posture_warnings):
         """Process both warning types with identical handling"""
         cpr_logger.info("\n[POST-PROCESS] Starting warning overlay")
         
         # Read processed video with original parameters
-        cap = cv2.VideoCapture(output_video_path)
+        cap = cv2.VideoCapture(video_output_path)
         if not cap.isOpened():
             cpr_logger.info("[ERROR] Failed to open processed video")
             return
@@ -66,7 +66,7 @@ class WarningsOverlayer:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         # Create final writer with ORIGINAL codec and parameters
-        base = os.path.splitext(output_video_path)[0]
+        base = os.path.splitext(video_output_path)[0]
         final_path = os.path.abspath(f"{base}_final.mp4")
         writer = cv2.VideoWriter(final_path, original_fourcc, processed_fps, (width, height))
 

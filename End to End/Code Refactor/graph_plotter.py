@@ -4,6 +4,7 @@ import sys
 import cv2
 from logging_config import cpr_logger
 from matplotlib.ticker import MultipleLocator
+import os
 
 class GraphPlotter:
     """Class to plot graphs for various metrics"""
@@ -179,7 +180,7 @@ class GraphPlotter:
 
         return legend_handles
 
-    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps):
+    def plot_motion_curve_for_all_chunks(self, chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps, plot_output_path):
         """Plot combined analysis with connected chunks and proper error regions"""
         
         self._assign_graph_data(chunks_y_preprocessed, chunks_peaks, chunks_depth, chunks_rate, chunks_start_and_end_indices, posture_warnings_regions, sampling_interval_in_frames, fps)
@@ -253,6 +254,12 @@ class GraphPlotter:
         
         # Adjust tight_layout with additional padding
         plt.tight_layout(rect=[0, 0.025, 1, 0.95])  # Reduced top from 1 to 0.95 to make space
+
+        if plot_output_path:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(plot_output_path), exist_ok=True)
+            plt.savefig(plot_output_path, dpi=300, bbox_inches='tight')
+            cpr_logger.info(f"[Graph Plotter] Plot saved to {plot_output_path}")
         
         plt.show()
         cpr_logger.info("[Graph Plotter] Plot display complete")

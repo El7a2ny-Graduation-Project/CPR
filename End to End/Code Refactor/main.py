@@ -23,7 +23,8 @@ from logging_config import cpr_logger
 class CPRAnalyzer:
     """Main CPR analysis pipeline with execution tracing"""
     
-    def __init__(self, source, requested_fps, output_video_path):
+    def __init__(self, input_video, video_output_path, plot_output_path, requested_fps):
+        
         cpr_logger.info(f"[INIT] Initializing CPR Analyzer")
 
         #& Frame counter
@@ -37,15 +38,18 @@ class CPRAnalyzer:
         cpr_logger.info(f"[INIT] Socket server started")
         
         #& Open the camera source and get the FPS
-        self.cap = ThreadedCamera(source, requested_fps)
+        self.cap = ThreadedCamera(input_video, requested_fps)
         self.fps = self.cap.fps
         cpr_logger.info(f"[INIT] Camera FPS: {self.fps}")
 
         #& Generate output path with MP4 extension
-        self.output_video_path = output_video_path
+        self.video_output_path = video_output_path
         self.video_writer = None
         self._writer_initialized = False
-        cpr_logger.info(f"[INIT] Output path: {self.output_video_path}")
+        cpr_logger.info(f"[INIT] Output path: {self.video_output_path}")
+
+        #& For the graph plotter
+        self.plot_output_path = plot_output_path
         
         #& Initialize system components
         self.pose_estimator = PoseEstimator(min_confidence=0.5)
@@ -154,7 +158,7 @@ class CPRAnalyzer:
                                 ('MJPG', 'avi', 'avi'), 
                                 ('XVID', 'avi', 'avi')]:
             fourcc = cv2.VideoWriter_fourcc(*codec)
-            writer = cv2.VideoWriter(self.output_video_path, fourcc, effective_fps, (width, height))
+            writer = cv2.VideoWriter(self.video_output_path, fourcc, effective_fps, (width, height))
             
             if writer.isOpened():
                 self.video_writer = writer
@@ -428,7 +432,7 @@ class CPRAnalyzer:
             
             if self.video_writer is not None:
                 self.video_writer.release()
-                cpr_logger.info(f"[VIDEO WRITER] Released writer. File should be at: {os.path.abspath(self.output_video_path)}")
+                cpr_logger.info(f"[VIDEO WRITER] Released writer. File should be at: {os.path.abspath(self.video_output_path)}")
             cv2.destroyAllWindows()
             cpr_logger.info("[RUN ANALYSIS] Released video capture and destroyed all windows")         
 
@@ -438,8 +442,17 @@ class CPRAnalyzer:
             self._plot_full_motion_curve_for_all_chunks()
             cpr_logger.info("[RUN ANALYSIS] Plotted full motion curve")
 
-            self.warnings_overlayer.add_warnings_to_processed_video(self.output_video_path, self.sampling_interval_frames, self.rate_and_depth_warnings, self.posture_warnings)
+            self.warnings_overlayer.add_warnings_to_processed_video(self.video_output_path, self.sampling_interval_frames, self.rate_and_depth_warnings, self.posture_warnings)
             cpr_logger.info("[RUN ANALYSIS] Added warnings to processed video")
+
+            try:
+                if os.path.exists(self.video_output_path):
+                    os.remove(self.video_output_path)
+                    cpr_logger.info(f"[CLEANUP] Successfully deleted video file: {self.video_output_path}")
+                else:
+                    cpr_logger.warning(f"[CLEANUP] Video file not found at: {self.video_output_path}")
+            except Exception as e:
+                cpr_logger.error(f"[ERROR] Failed to delete video file: {str(e)}")
 
             report_and_plot_end_time = time.time()
             report_and_plot_elapsed_time = report_and_plot_end_time - report_and_plot_start_time
@@ -641,7 +654,8 @@ class CPRAnalyzer:
                                                   self.metrics_calculator.chunks_start_and_end_indices, 
                                                   self.posture_warnings, 
                                                   self.sampling_interval_frames,
-                                                  self.fps)
+                                                  self.fps,
+                                                  self.plot_output_path)
             cpr_logger.info("[PLOT] Full motion curve plotted")
         except Exception as e:
             cpr_logger.error(f"[ERROR] Failed to plot full motion curve: {str(e)}")
@@ -655,20 +669,47 @@ class CPRAnalyzer:
 if __name__ == "__main__":
     cpr_logger.info(f"[MAIN] CPR Analysis Started")
     
-    # source = "https://192.168.1.9:8080/video"  # IP camera URL
-    source = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\Dataset\Hopefully Ideal Angle\5.mp4"
+    # Configuration
     requested_fps = 30
-    output_video_path = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project\CPR\End to End\Code Refactor\Output\output.mp4"
+    base_dir = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project"
     
+    # Define input path
+    input_video = os.path.join(base_dir, "CPR", "Dataset", "Batch 2", "14.mp4")
+    
+    # Validate input file exists
+    if not os.path.exists(input_video):
+        cpr_logger.error(f"[ERROR] Input video not found at: {input_video}")
+        sys.exit(1)
+    
+    # Extract original filename without extension
+    original_name = os.path.splitext(os.path.basename(input_video))[0]
+    cpr_logger.info(f"[CONFIG] Original video name: {original_name}")
+    
+    # Create output directory if it doesn't exist
+    output_dir = os.path.join(base_dir, "CPR", "End to End", "Code Refactor", "Output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Set output paths using original name
+    video_output_path = os.path.join(output_dir, f"{original_name}_output.mp4")
+    plot_output_path = os.path.join(output_dir, f"{original_name}_output.png")
+    
+    # Log paths for verification
+    cpr_logger.info(f"[CONFIG] Input video: {input_video}")
+    cpr_logger.info(f"[CONFIG] Video output: {video_output_path}")
+    cpr_logger.info(f"[CONFIG] Plot output: {plot_output_path}")
+    
+    # Initialize and run analyzer
     initialization_start_time = time.time()
-    analyzer = CPRAnalyzer(source, requested_fps, output_video_path)
+    analyzer = CPRAnalyzer(input_video, video_output_path, plot_output_path, requested_fps)
+    
+    # Set plot output path in the analyzer
+    analyzer.plot_output_path = plot_output_path
+    
     initialization_end_time = time.time()
     initialization_elapsed_time = initialization_end_time - initialization_start_time
-    
     cpr_logger.info(f"[TIMING] Initialization time: {initialization_elapsed_time:.2f}s")
     
     try:
-        # This will now block until client connects
         analyzer.run_analysis()
     finally:
         analyzer.socket_server.stop_server()
