@@ -16,8 +16,6 @@ from shoulders_analyzer import ShouldersAnalyzer
 from graph_plotter import GraphPlotter
 from warnings_overlayer import WarningsOverlayer
 
-from threaded_camera import ThreadedCamera
-from analysis_socket_server import AnalysisSocketServer
 from logging_config import cpr_logger
 
 class CPRAnalyzer:
@@ -30,17 +28,18 @@ class CPRAnalyzer:
         #& Frame counter
         self.frame_counter = -1
         cpr_logger.info(f"[INIT] Frame counter initialized")
-
-        #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-        #& Add socket server
-        self.socket_server = AnalysisSocketServer()
-        self.socket_server.start_server()
-        cpr_logger.info(f"[INIT] Socket server started")
         
-        #& Open the camera source and get the FPS
-        self.cap = ThreadedCamera(input_video, requested_fps)
-        self.fps = self.cap.fps
-        cpr_logger.info(f"[INIT] Camera FPS: {self.fps}")
+        #& Open video file
+        self.cap = cv2.VideoCapture(input_video)
+        if not self.cap.isOpened():
+            cpr_logger.error(f"[ERROR] Failed to open video file: {input_video}")
+            return
+        cpr_logger.info(f"[INIT] Video file opened successfully")
+
+        #& Get video properties
+        self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        print(f"[INIT] Video has {self.frame_count} frames at {self.fps:.2f} FPS")
 
         #& Generate output path with MP4 extension
         self.video_output_path = video_output_path
@@ -82,9 +81,9 @@ class CPRAnalyzer:
         cpr_logger.info("[INIT] Previous results initialized")
 
         #& Fundamental timing parameters (in seconds)
-        self.MIN_ERROR_DURATION = 1.0    # Require sustained errors for 1 second
+        self.MIN_ERROR_DURATION = 0.5    # Require sustained errors for 1 second
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
-        self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
+        self.SAMPLING_INTERVAL = 0.1     # Analyze every 0.2 seconds
         self.KEEP_RATE_AND_DEPTH_WARNINGS_INTERVAL = 3.0
         self.MIN_CHUNK_LENGTH_TO_REPORT = 3.0
 
@@ -220,28 +219,30 @@ class CPRAnalyzer:
     def run_analysis(self):
         try:
             cpr_logger.info("[RUN ANALYSIS] Starting analysis")
-            
-            #& Client Connection
-            # Wait for client connection before proceeding
-            if not self.socket_server.wait_for_connection(timeout=120):
-                cpr_logger.info("[ERROR] No client connected within 60 seconds")
-                return
-            cpr_logger.info("[RUN ANALYSIS] Client connected")
-
-            #& Video Capture
-            # Start camera capture AFTER client connects
-            self.cap.start_capture()
-            cpr_logger.info("[RUN ANALYSIS] Camera capture started")
 
             #& Main execution loop
             main_loop_start_time = time.time()
             cpr_logger.info("[RUN ANALYSIS] Main loop started")
-            while True:
-                #& Read Frame
-                # Get frame from camera queue
-                frame = self.cap.read()
+            while self.cap.isOpened():
+                #& Always advance to next frame first
+                ret = self.cap.grab()  # Faster than read() for skipping
+                if not ret: break
+             
+                #& Increment frame counter
+                self.frame_counter += 1
 
-                # Check for termination sentinel
+                cpr_logger.info(f"\n[FRAME {int(self.frame_counter)}]")
+                
+                #& Check if you want to skip the frame
+                if self.frame_counter % self.sampling_interval_frames != 0:                      
+                    cpr_logger.info(f"[SKIP FRAME] Skipping frame") 
+                    continue
+
+                #& Retrieve and process frame
+                _, frame = self.cap.retrieve()
+                cpr_logger.info(f"[RUN ANALYSIS] Retrieved frame")
+                
+                #& Check for termination sentinel
                 if frame is None:
                     cpr_logger.info("Camera stream ended")
                     
@@ -258,26 +259,7 @@ class CPRAnalyzer:
                         cpr_logger.info(f"[RUN ANALYSIS] End of chunk detected")
                         self._handle_chunk_end()
                     break
-                
-                #& Increment frame counter
-                self.frame_counter += 1
 
-                cpr_logger.info(f"\n[FRAME {int(self.frame_counter)}]")
-                
-                #& Check if you want to skip the frame
-                if self.frame_counter % self.sampling_interval_frames != 0:  
-                    #^ Formated Warnings
-                    # Return the cashed warnings
-                    formatted_warnings = self._format_warnings()
-                    cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
-                    
-                    #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-                    self.socket_server.warning_queue.put(formatted_warnings)
-                    cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
-                    
-                    cpr_logger.info(f"[SKIP FRAME] Skipping frame") 
-                    continue
-                
                 #& Rotate frame
                 frame = self._handle_frame_rotation(frame)
                 cpr_logger.info(f"[RUN ANALYSIS] Rotated frame")
@@ -400,14 +382,6 @@ class CPRAnalyzer:
                 # Don't update it before handling the four cases because the old cached warnings might be needed.
                 self.cached_posture_warnings = posture_warnings
                 
-                #^ Formated Warnings
-                formatted_warnings = self._format_warnings()
-                cpr_logger.info(f"[RUN ANALYSIS] Formatted warnings: {formatted_warnings}")
-
-                #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-                self.socket_server.warning_queue.put(formatted_warnings)
-                cpr_logger.info(f"[RUN ANALYSIS] Sent warnings to socket server")
-                                
                 #& Check if the user wants to quit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     cpr_logger.info("[RUN ANALYSIS] 'q' pressed, exiting loop.")
@@ -422,10 +396,6 @@ class CPRAnalyzer:
 
         finally:
             report_and_plot_start_time = time.time()
-            
-            #!$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-            self.socket_server.stop_server()
-            cpr_logger.info("[CLEANUP] Socket server stopped")
 
             self.cap.release()
             self.cap = None
@@ -674,7 +644,7 @@ if __name__ == "__main__":
     base_dir = r"C:\Users\Fatema Kotb\Documents\CUFE 25\Year 04\GP\Spring\El7a2ny-Graduation-Project"
     
     # Define input path
-    input_video = os.path.join(base_dir, "CPR", "Dataset", "Batch 2", "14.mp4")
+    input_video = os.path.join(base_dir, "CPR", "Dataset", "Batch 2","01.mp4")
     
     # Validate input file exists
     if not os.path.exists(input_video):
@@ -690,8 +660,8 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     
     # Set output paths using original name
-    video_output_path = os.path.join(output_dir, f"{original_name}_output.mp4")
-    plot_output_path = os.path.join(output_dir, f"{original_name}_output.png")
+    video_output_path = os.path.join(output_dir, f"{original_name}_Myoutput.mp4")
+    plot_output_path = os.path.join(output_dir, f"{original_name}_Myoutput.png")
     
     # Log paths for verification
     cpr_logger.info(f"[CONFIG] Input video: {input_video}")
@@ -712,4 +682,4 @@ if __name__ == "__main__":
     try:
         analyzer.run_analysis()
     finally:
-        analyzer.socket_server.stop_server()
+        cpr_logger.info(f"[MAIN] CPR Analysis Terminated")

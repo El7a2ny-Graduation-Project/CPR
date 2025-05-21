@@ -7,46 +7,26 @@ from logging_config import cpr_logger
 
 class WarningsOverlayer:
     def __init__(self):
+        # Single drawer configuration
+        self.DRAWER_CONFIG = {
+            "base_position": (0.05, 0.15),  # 5% from left, 15% from top
+            "vertical_spacing": 0.06  # 6% of frame height between warnings
+        }
+
+        # Warning config (colors only)
         self.WARNING_CONFIG = {
             # Posture Warnings
-            "Right arm bent!": {
-                "color": (52, 110, 235),
-                "position": (50, 150)
-            },
-            "Left arm bent!": {
-                "color": (52, 110, 235),
-                "position": (50, 200)
-            },
-            "Left hand not on chest!": {
-                "color": (161, 127, 18),
-                "position": (50, 250)
-            },
-            "Right hand not on chest!": {
-                "color": (161, 127, 18),
-                "position": (50, 300)
-            },
-            "Both hands not on chest!": {
-                "color": (161, 127, 18),
-                "position": (50, 350)
-            },
+            "Right arm bent!": {"color": (52, 110, 235)},
+            "Left arm bent!": {"color": (52, 110, 235)},
+            "Left hand not on chest!": {"color": (161, 127, 18)},
+            "Right hand not on chest!": {"color": (161, 127, 18)},
+            "Both hands not on chest!": {"color": (161, 127, 18)},
             
             # Rate/Depth Warnings
-            "Depth too low!": {
-                "color": (125, 52, 235),
-                "position": (50, 400)
-            },
-            "Depth too high!": {
-                "color": (125, 52, 235),
-                "position": (50, 450)
-            },
-            "Rate too slow!": {
-                "color": (235, 52, 214),
-                "position": (50, 500)
-            },
-            "Rate too fast!": {
-                "color": (235, 52, 214),
-                "position": (50, 550)
-            }
+            "Depth too low!": {"color": (125, 52, 235)},
+            "Depth too high!": {"color": (125, 52, 235)},
+            "Rate too slow!": {"color": (235, 52, 214)},
+            "Rate too fast!": {"color": (235, 52, 214)}
         }
     
     def add_warnings_to_processed_video(self, video_output_path, sampling_interval_frames, rate_and_depth_warnings, posture_warnings):
@@ -111,24 +91,29 @@ class WarningsOverlayer:
         cpr_logger.info(f"\n[POST-PROCESS] Final output saved to: {final_path}")
 
     def _draw_warnings(self, frame, active_warnings):
-        """Draw warnings using unified configuration"""
-        drawn_positions = set()  # Prevent overlapping
+        """Draw all warnings in a single vertical drawer"""
+        frame_height = frame.shape[0]
+        frame_width = frame.shape[1]
         
+        # Calculate starting position
+        base_x = int(self.DRAWER_CONFIG["base_position"][0] * frame_width)
+        current_y = int(self.DRAWER_CONFIG["base_position"][1] * frame_height)
+        
+        # Calculate spacing between warnings
+        y_spacing = int(self.DRAWER_CONFIG["vertical_spacing"] * frame_height)
+
+        # Draw all active warnings vertically
         for warning_text in active_warnings:
-            if config := self.WARNING_CONFIG.get(warning_text):
-                x, y = config['position']
-                
-                # Auto-stack if position occupied
-                while (x, y) in drawn_positions:
-                    y += 50  # Move down by 50px
-                
+            if color := self.WARNING_CONFIG.get(warning_text, {}).get("color"):
+                # Draw warning at current position
                 self._draw_warning_banner(
                     frame=frame,
                     text=warning_text,
-                    color=config['color'],
-                    position=(x, y)
-                )
-                drawn_positions.add((x, y))
+                    color=color,
+                    position=(base_x, current_y))
+                
+                # Move down for next warning
+                current_y += y_spacing
     
     def _draw_warning_banner(self, frame, text, color, position):
             """Base drawing function for warning banners"""
