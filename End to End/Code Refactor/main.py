@@ -241,8 +241,6 @@ class CPRAnalyzer:
                     cpr_logger.info(f"[SKIP FRAME] Skipping frame") 
                     continue
 
-                self.processed_frame_counter += 1  # Increment here
-
                 #& Retrieve and process frame
                 _, frame = self.cap.retrieve()
                 cpr_logger.info(f"[RUN ANALYSIS] Retrieved frame")
@@ -287,7 +285,6 @@ class CPRAnalyzer:
                 
                 # Update the cached value for the next iteration
                 self.prev_is_part_of_a_posture_warnings_region = is_part_of_a_posture_warnings_region
-
                 cpr_logger.info(f"[RUN ANALYSIS] Posture warnings region flags updated")
 
                 #& Chunks and Posture Warnings Regions Management
@@ -350,7 +347,7 @@ class CPRAnalyzer:
                 if (self.waiting_to_start_new_chunk) and (has_appended_midpoint):
                     cpr_logger.info(f"[RUN ANALYSIS] Follow up on cases 3 and 4")
 
-                    if (new_chunk_type == "chunk") or (new_chunk_type == "mini chunk" and (self.frame_counter != self.chunk_end_frame_index or self.chunk_start_frame_index is None)):
+                    if (new_chunk_type == "chunk") or (new_chunk_type == "mini chunk" and (self.frame_counter != self.chunk_end_frame_index)):
                         self._start_new_chunk()
 
                 #& Compose frame
@@ -386,7 +383,11 @@ class CPRAnalyzer:
                 #& Update the cached posture warnings
                 # Don't update it before handling the four cases because the old cached warnings might be needed.
                 self.cached_posture_warnings = posture_warnings
-                
+
+                #& Increment processed frame counter
+                self.processed_frame_counter += 1  # Increment here
+                cpr_logger.info(f"[RUN ANALYSIS] Processed frame counter incremented")
+
                 #& Check if the user wants to quit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     cpr_logger.info("[RUN ANALYSIS] 'q' pressed, exiting loop.")
