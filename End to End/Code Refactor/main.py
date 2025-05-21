@@ -28,6 +28,9 @@ class CPRAnalyzer:
         #& Frame counter
         self.frame_counter = -1
         cpr_logger.info(f"[INIT] Frame counter initialized")
+
+        self.processed_frame_counter = 0  # Track only processed frames
+        cpr_logger.info(f"[INIT] Processed frame counter initialized")
         
         #& Open video file
         self.cap = cv2.VideoCapture(input_video)
@@ -81,9 +84,9 @@ class CPRAnalyzer:
         cpr_logger.info("[INIT] Previous results initialized")
 
         #& Fundamental timing parameters (in seconds)
-        self.MIN_ERROR_DURATION = 0.5    # Require sustained errors for 1 second
+        self.MIN_ERROR_DURATION = 0.5    # Require sustained errors zfor 1 second
         self.REPORTING_INTERVAL = 5.0    # Generate reports every 5 seconds
-        self.SAMPLING_INTERVAL = 0.1     # Analyze every 0.2 seconds
+        self.SAMPLING_INTERVAL = 0.2     # Analyze every 0.2 seconds
         self.KEEP_RATE_AND_DEPTH_WARNINGS_INTERVAL = 3.0
         self.MIN_CHUNK_LENGTH_TO_REPORT = 3.0
 
@@ -238,6 +241,8 @@ class CPRAnalyzer:
                     cpr_logger.info(f"[SKIP FRAME] Skipping frame") 
                     continue
 
+                self.processed_frame_counter += 1  # Increment here
+
                 #& Retrieve and process frame
                 _, frame = self.cap.retrieve()
                 cpr_logger.info(f"[RUN ANALYSIS] Retrieved frame")
@@ -326,7 +331,7 @@ class CPRAnalyzer:
                     self._handle_posture_warnings_region_end()
                 
                 #~ Case 4: chunk after a chunk
-                if (not is_part_of_a_posture_warnings_region) and (not is_end_of_posture_warnings_region) and (self.frame_counter % self.reporting_interval_frames == 0):    
+                if (not is_part_of_a_posture_warnings_region) and (not is_end_of_posture_warnings_region) and (self.processed_frame_counter % self.reporting_interval_frames == 0):    
                     cpr_logger.info(f"[RUN ANALYSIS] Case 4: chunk after a chunk")
 
                     # End the previous chunk if it exists
@@ -345,7 +350,7 @@ class CPRAnalyzer:
                 if (self.waiting_to_start_new_chunk) and (has_appended_midpoint):
                     cpr_logger.info(f"[RUN ANALYSIS] Follow up on cases 3 and 4")
 
-                    if (new_chunk_type == "chunk") or (new_chunk_type == "mini chunk" and self.frame_counter != self.chunk_end_frame_index):
+                    if (new_chunk_type == "chunk") or (new_chunk_type == "mini chunk" and (self.frame_counter != self.chunk_end_frame_index or self.chunk_start_frame_index is None)):
                         self._start_new_chunk()
 
                 #& Compose frame
